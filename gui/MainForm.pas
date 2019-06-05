@@ -9,9 +9,9 @@ Interface
 Uses
   Windows, Messages, SysUtils, Variants, Classes, Graphics,
   Controls, Forms, Dialogs, ComCtrls, Menus,
-  Generics.Collections,
+  Generics.Collections, RequestFilter,
   IRPMonDll, RequestListModel, ExtCtrls,
-  HookObjects, RequestThread
+  HookObjects, RequestThread, DataParsers
 {$IFNDEF FPC}
   , AppEvnts
 {$ENDIF}
@@ -49,6 +49,11 @@ Type
     UnloadOnExitMenuItem: TMenuItem;
     UninstallOnExitMenuItem: TMenuItem;
     Documentation1: TMenuItem;
+    DataParsersTabSheet: TTabSheet;
+    DataParsersListView: TListView;
+    FiltersMenuItem: TMenuItem;
+    LogOpenDialog: TOpenDialog;
+    OpenMenuItem: TMenuItem;
     Procedure ClearMenuItemClick(Sender: TObject);
     procedure FormCreate(Sender: TObject);
     procedure CaptureEventsMenuItemClick(Sender: TObject);
@@ -64,6 +69,10 @@ Type
     procedure FormClose(Sender: TObject; var Action: TCloseAction);
     procedure DriverMenuItemClick(Sender: TObject);
     procedure Documentation1Click(Sender: TObject);
+    procedure DataParsersListViewData(Sender: TObject; Item: TListItem);
+    procedure DataParsersTabSheetShow(Sender: TObject);
+    procedure FiltersMenuItemClick(Sender: TObject);
+    procedure OpenMenuItemClick(Sender: TObject);
   Private
 {$IFDEF FPC}
     FAppEvents: TApplicationProperties;
@@ -76,6 +85,8 @@ Type
     FHookedDeviceDriverMap : TDictionary<Pointer, Pointer>;
     FRequestTHread : TRequestThread;
     FRequestMsgCode : Cardinal;
+    FParsers : TObjectList<TDataParser>;
+    FFilters : TObjectList<TRequestFilter>;
     Procedure EnumerateHooks;
     Procedure EnumerateClassWatches;
     Procedure EnumerateDriverNameWatches;
@@ -85,6 +96,8 @@ Type
     Procedure IrpMonAppEventsException(Sender: TObject; E: Exception);
     Procedure WriteSettings;
     Procedure ReadSettings;
+    Procedure OnRequestProcessed(ARequest:TDriverRequest; Var AStore:Boolean);
+    Procedure CreateInitialFilters;
   Public
     ServiceTask : TDriverTaskObject;
     TaskList : TTaskOperationList;
@@ -103,7 +116,7 @@ Uses
   ListModel, HookProgressForm,
   Utils, TreeForm, RequestDetailsForm, AboutForm,
   ClassWatchAdd, ClassWatch, DriverNameWatchAddForm,
-  WatchedDriverNames;
+  WatchedDriverNames, FillterForm;
 
 
 
@@ -163,10 +176,31 @@ begin
 Close;
 end;
 
+Procedure TMainFrm.FiltersMenuItemClick(Sender: TObject);
+Var
+  rf : TRequestFilter;
+begin
+With TFilterFrm.Create(Application, FFilters) Do
+  begin
+  ShowModal;
+  If Not Cancelled Then
+    begin
+    FFilters.Clear;
+    For rf In FilterList Do
+      FFilters.Add(rf);
+
+    FModel.Reevaluate;
+    end;
+
+  Free;
+  end;
+end;
+
 Procedure TMainFrm.FormClose(Sender: TObject; var Action: TCloseAction);
 begin
 FAppEvents.Free;
 WriteSettings;
+FParsers.Free;
 taskList.Add(hooLibraryFinalize, serviceTask);
 If UnloadOnExitMenuItem.Checked Then
   taskList.Add(hooStop, serviceTask);
@@ -179,10 +213,13 @@ With THookProgressFrm.Create(Application, taskList) Do
   ShowModal;
   Free;
   end;
+
+FFilters.Free;
 end;
 
 Procedure TMainFrm.FormCreate(Sender: TObject);
 begin
+FFilters := TObjectList<TRequestFilter>.Create;
 RequestListView.DoubleBuffered := True;
 {$IFNDEF FPC}
 FAppEvents := TApplicationEvents.Create(Self);
@@ -201,6 +238,7 @@ FHookedDrivers := TDictionary<Pointer, TDriverHookObject>.Create;
 FHookedDevices := TDictionary<Pointer, TDeviceHookObject>.Create;
 FHookedDeviceDriverMap := TDictionary<Pointer, Pointer>.Create;
 FModel := TRequestListModel.Create;
+FModel.OnRequestProcessed := OnRequestProcessed;
 FModel.ColumnUpdateBegin;
 FModel.
     ColumnAdd(TDriverRequest.GetBaseColumnName(rlmctId), Ord(rlmctId), False, 60).
@@ -213,12 +251,16 @@ FModel.
     ColumnAdd(TDriverRequest.GetBaseColumnName(rlmctDeviceName), Ord(rlmctDeviceName), True).
     ColumnAdd(TDriverRequest.GetBaseColumnName(rlmctDriverObject), Ord(rlmctDriverObject)).
     ColumnAdd(TDriverRequest.GetBaseColumnName(rlmctDriverName), Ord(rlmctDriverName), True).
-    ColumnAdd(TDriverRequest.GetBaseColumnName(rlmctResult), Ord(rlmctResult), False, 75).
+    ColumnAdd(TDriverRequest.GetBaseColumnName(rlmctResultValue), Ord(rlmctResultValue), False, 75).
+    ColumnAdd(TDriverRequest.GetBaseColumnName(rlmctResultConstant), Ord(rlmctResultConstant), True).
     ColumnAdd(TDriverRequest.GetBaseColumnName(rlmctIRPAddress), Ord(rlmctIRPAddress), False, 75).
-    ColumnAdd(TDriverRequest.GetBaseColumnName(rlmctIOSBStatus), Ord(rlmctIOSBStatus), False, 75).
+    ColumnAdd(TDriverRequest.GetBaseColumnName(rlmctIOSBStatusValue), Ord(rlmctIOSBStatusValue), False, 75).
+    ColumnAdd(TDriverRequest.GetBaseColumnName(rlmctIOSBStatusConstant), Ord(rlmctIOSBStatusConstant), True).
     ColumnAdd(TDriverRequest.GetBaseColumnName(rlmctIOSBInformation), Ord(rlmctIOSBInformation), False, 75).
     ColumnAdd(TDriverRequest.GetBaseColumnName(rlmctSubType), Ord(rlmctSubType), False, 100).
+    ColumnAdd(TDriverRequest.GetBaseColumnName(rlmctMinorFunction), Ord(rlmctMinorFunction), False, 100).
     ColumnAdd(TDriverRequest.GetBaseColumnName(rlmctFileObject), Ord(rlmctFileObject), False, 75).
+    ColumnAdd(TDriverRequest.GetBaseColumnName(rlmctFileName), Ord(rlmctFileName), True).
     ColumnAdd(TDriverRequest.GetBaseColumnName(rlmctIRPFlags), Ord(rlmctIRPFlags), False, 75).
     ColumnAdd(TDriverRequest.GetBaseColumnName(rlmctArg1), Ord(rlmctArg1), False, 75).
     ColumnAdd(TDriverRequest.GetBaseColumnName(rlmctArg2), Ord(rlmctArg2), False, 75).
@@ -226,7 +268,11 @@ FModel.
     ColumnAdd(TDriverRequest.GetBaseColumnName(rlmctArg4), Ord(rlmctArg4), False, 75).
     ColumnAdd(TDriverRequest.GetBaseColumnName(rlmctPreviousMode), Ord(rlmctPreviousMode)).
     ColumnAdd(TDriverRequest.GetBaseColumnName(rlmctRequestorMode), Ord(rlmctRequestorMode)).
-    ColumnAdd(TDriverRequest.GetBaseColumnName(rlmctRequestorPID), Ord(rlmctRequestorPID));
+    ColumnAdd(TDriverRequest.GetBaseColumnName(rlmctRequestorPID), Ord(rlmctRequestorPID)).
+    ColumnAdd(TDriverRequest.GetBaseColumnName(rlmctDataAssociated), Ord(rlmctDataAssociated), False, 50).
+    ColumnAdd(TDriverRequest.GetBaseColumnName(rlmctDataAssociated), Ord(rlmctDataAssociated), False, 50).
+    ColumnAdd(TDriverRequest.GetBaseColumnName(rlmctEmulated), Ord(rlmctEmulated), False, 50).
+    ColumnAdd(TDriverRequest.GetBaseColumnName(rlmctDataSize), Ord(rlmctDataSize), False, 50);
 FModel.ColumnUpdateEnd;
 FModel.CreateColumnsMenu(ColumnsMenuItem);
 FModel.SetDisplayer(RequestListView);
@@ -244,6 +290,10 @@ Else begin
   RefreshNameCacheMenuItem.Enabled := False;
   end;
 
+FParsers := TObjectList<TDataParser>.Create;
+DataPrasersLoad(ExtractFileDir(Application.ExeName), FParsers);
+FModel.Parsers := FParsers;
+CreateInitialFilters;
 ReadSettings;
 end;
 
@@ -310,6 +360,25 @@ begin
 FModel.Clear;
 end;
 
+Procedure TMainFrm.DataParsersListViewData(Sender: TObject; Item: TListItem);
+Var
+  dp : TDataParser;
+begin
+With Item Do
+  begin
+  dp := FParsers[Index];
+  Caption := Format('%d', [UInt64(dp.Priority)]);
+  SubItems.Add(dp.Name);
+  SubItems.Add(Format('%d.%d.%d', [dp.MajorVersion, dp.MinorVersion, dp.BuildNumber]));
+  SubItems.Add(dp.LibraryName);
+  end;
+end;
+
+Procedure TMainFrm.DataParsersTabSheetShow(Sender: TObject);
+begin
+DataParsersListView.Items.Count := FParsers.Count;
+end;
+
 Procedure TMainFrm.Documentation1Click(Sender: TObject);
 Var
   appDirectory : WideString;
@@ -344,7 +413,7 @@ begin
 rq := FModel.Selected;
 If Assigned(rq) Then
   begin
-  With TRequestDetailsFrm.Create(Self, rq) Do
+  With TRequestDetailsFrm.Create(Self, rq, FParsers) Do
     begin
     ShowModal;
     Free;
@@ -363,11 +432,13 @@ begin
 If LogSaveDialog.Execute Then
   begin
   fn := LogSaveDialog.FileName;
-  If LogSaveDialog.FilterIndex = 1 Then
-    fn := ChangeFIleExt(fn, '.log');
+  Case LogSaveDialog.FilterIndex Of
+    1 : fn := ChangeFIleExt(fn, '.log');
+    2 : fn := ChangeFIleExt(fn, '.bin');
+    end;
 
   FModel.Sort;
-  FModel.SaveToFile(fn);
+  FModel.SaveToFile(fn, LogSaveDialog.FilterIndex = 2);
   end;
 end;
 
@@ -550,6 +621,20 @@ If err = ERROR_SUCCESS Then
 Else WinErrorMessage('Failed to unregister the watched driver name', err);
 end;
 
+Procedure TMainFrm.OpenMenuItemClick(Sender: TObject);
+Var
+  fn : WideString;
+begin
+If LogOpenDialog.Execute Then
+  begin
+  fn := LogOpenDialog.FileName;
+  If LogOpenDialog.FilterIndex = 1 Then
+    fn := ChangeFileExt(fn, '.bin');
+
+  FModel.LoadFromFile(fn);
+  end;
+end;
+
 Procedure TMainFrm.EnumerateDriverNameWatches;
 Var
   M : TMenuItem;
@@ -645,6 +730,47 @@ Finally
   End;
 end;
 
+Procedure TMainFrm.OnRequestProcessed(ARequest:TDriverRequest; Var AStore:Boolean);
+Var
+  matchResult : Cardinal;
+  rf : TRequestFilter;
+  matchingRF : TRequestFilter;
+begin
+ARequest.Highlight := False;
+AStore := (FFilters.Count = 0);
+For rf In FFilters Do
+  begin
+  matchingRF := rf.Match(ARequest);
+  If Assigned(matchingRF) Then
+    begin
+    AStore := (matchingRF.Action In [ffaInclude, ffaHighlight]);
+    ARequest.Highlight := (matchingRF.Action = ffaHighlight);
+    If ARequest.Highlight Then
+      ARequest.HighlightColor := matchingRF.HighlightColor;
+
+    Break;
+    end;
+  end;
+end;
+
+Procedure TMainFrm.CreateInitialFilters;
+Var
+  rf : TRequestFilter;
+begin
+rf := TRequestFilter.NewInstance(ertUndefined);
+rf.Name := '0';
+rf.SetAction(ffaHighlight, ClRed);
+rf.SetCondition(rlmctProcessId, rfoEquals, GetCurrentProcessId);
+rf.Enabled := True;
+FFilters.Add(rf);
+
+rf := TRequestFilter.NewInstance(ertUndefined);
+rf.Name := '1';
+rf.SetAction(ffaInclude);
+rf.SetCondition(rlmctRequestType, rfoAlwaysTrue, 0);
+rf.Enabled := True;
+FFilters.Add(rf);
+end;
 
 End.
 

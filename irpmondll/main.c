@@ -3,6 +3,7 @@
 #include "debug.h"
 #include "irpmondll-types.h"
 #include "driver-com.h"
+#include "request.h"
 #include "irpmondll.h"
 
 
@@ -14,6 +15,16 @@
 IRPMONDLL_API DWORD WINAPI IRPMonDllGetRequest(PREQUEST_HEADER Request, DWORD Size)
 {
 	return DriverComGetRequest(Request, Size);
+}
+
+
+IRPMONDLL_API size_t WINAPI IRPMonDllGetRequestSize(const REQUEST_HEADER *Request)
+{
+	size_t ret = 0;
+
+	ret = RequestGetSize(Request);
+
+	return ret;
 }
 
 
@@ -195,6 +206,35 @@ IRPMONDLL_API VOID WINAPI IRPMonDllDriverNameWatchEnumFree(PDRIVER_NAME_WATCH_RE
 
 	return;
 }
+
+
+IRPMONDLL_API DWORD WINAPI IRPMonDllRequestEmulateDriverDetected(void *DriverObject, const wchar_t *DriverName, PREQUEST_DRIVER_DETECTED *Request)
+{
+	return RequestEmulateDriverDetected(DriverObject, DriverName, Request);
+}
+
+IRPMONDLL_API DWORD WINAPI IRPMonDllRequestEmulateDeviceDetected(void *DriverObject, void *DeviceObject, const wchar_t *DeviceName, PREQUEST_DEVICE_DETECTED *Request)
+{
+	return RequestEmulateDeviceDetected(DriverObject, DeviceObject, DeviceName, Request);
+}
+
+IRPMONDLL_API DWORD WINAPI IRPMonDllRequestEmulateFileNameAssigned(void *FileObject, const wchar_t *FileName, PREQUEST_FILE_OBJECT_NAME_ASSIGNED *Request)
+{
+	return RequestEmulateFileNameAssigned(FileObject, FileName, Request);
+}
+
+IRPMONDLL_API DWORD WINAPI IRPMonDllRequestEmulateFileNameDeleted(void *FileObject, PREQUEST_FILE_OBJECT_NAME_DELETED *Request)
+{
+	return RequestEmulateFileNameDeleted(FileObject, Request);
+}
+
+IRPMONDLL_API void WINAPI IRPMonDllRequestEmulatedFree(PREQUEST_HEADER Header)
+{
+	RequestEmulatedFree(Header);
+
+	return;
+}
+
 
 
 /************************************************************************/

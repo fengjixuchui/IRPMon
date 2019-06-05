@@ -888,28 +888,40 @@ object RequestDetailsFrm: TRequestDetailsFrm
       OnClick = OkButtonClick
     end
   end
-  object NameValueListView: TListView
+  object PageControl1: TPageControl
     Left = 0
     Top = 0
     Width = 279
     Height = 281
+    ActivePage = HeadersTabSheet
     Align = alClient
-    Columns = <
-      item
-        Caption = 'Name'
-        Width = 125
-      end
-      item
-        AutoSize = True
-        Caption = 'Value'
-      end>
-    DoubleBuffered = True
-    ReadOnly = True
-    RowSelect = True
-    ParentDoubleBuffered = False
-    ShowColumnHeaders = False
-    ShowWorkAreas = True
     TabOrder = 1
-    ViewStyle = vsReport
+    object HeadersTabSheet: TTabSheet
+      Caption = 'Headers'
+      object NameValueListView: TListView
+        Left = 0
+        Top = 0
+        Width = 271
+        Height = 253
+        Align = alClient
+        Columns = <
+          item
+            Caption = 'Name'
+            Width = 125
+          end
+          item
+            AutoSize = True
+            Caption = 'Value'
+          end>
+        DoubleBuffered = True
+        ReadOnly = True
+        RowSelect = True
+        ParentDoubleBuffered = False
+        ShowColumnHeaders = False
+        ShowWorkAreas = True
+        TabOrder = 0
+        ViewStyle = vsReport
+      end
+    end
   end
 end

@@ -8,10 +8,22 @@ Interface
 
 Uses
   Windows, Classes, Generics.Collections, Generics.Defaults,
-  IRPMonDll, ListModel;
+  IRPMonDll, ListModel, IRPMonRequest, DataParsers, ComCtrls,
+  Graphics;
 
 
 Type
+  ERequestListModelColumnValueType = (
+    rlmcvtInteger,
+    rlmcvtString,
+    rlmcvtTime,
+    rlmcvtMajorFunction,
+    rlmcvtMinorFunction,
+    rlmcvtProcessorMode,
+    rlmcvtIRQL,
+    rlmcvtRequestType
+  );
+
   ERequestListModelColumnType = (
     rlmctId,
     rlmctTime,
@@ -20,10 +32,13 @@ Type
     rlmctDeviceName,
     rlmctDriverObject,
     rlmctDriverName,
-    rlmctResult,
+    rlmctResultValue,
+    rlmctResultConstant,
     rlmctSubType,
+    rlmctMinorFunction,
     rlmctIRPAddress,
     rlmctFileObject,
+    rlmctFileName,
     rlmctIRPFlags,
     rlmctArg1,
     rlmctArg2,
@@ -34,15 +49,20 @@ Type
     rlmctIRQL,
     rlmctPreviousMode,
     rlmctRequestorMode,
-    rlmctIOSBStatus,
+    rlmctIOSBStatusValue,
+    rlmctIOSBStatusConstant,
     rlmctIOSBInformation,
-    rlmctRequestorPID);
+    rlmctRequestorPID,
+    rlmctEmulated,
+    rlmctDataAssociated,
+    rlmctDataStripped,
+    rlmctDataSize);
   PERequestListModelColumnType = ^ERequestListModelColumnType;
 
   RequestListModelColumnSet = Set Of ERequestListModelColumnType;
 
 Const
-  RequestListModelColumnNames : Array [0..Ord(rlmctRequestorPID)] Of String = (
+  RequestListModelColumnNames : Array [0..Ord(rlmctDataSize)] Of String = (
     'ID',
     'Time',
     'Type',
@@ -50,10 +70,13 @@ Const
     'Device name',
     'Driver object',
     'Driver name',
-    'Result',
+    'Result value',
+    'Result constant',
     'Subtype',
+    'Minor function',
     'IRP address',
     'File object',
+    'File name',
     'IRP flags',
     'Argument1',
     'Argument2',
@@ -64,59 +87,69 @@ Const
     'IRQL',
     'Previous mode',
     'Requestor mode',
-    'IOSB.Status',
+    'IOSB.Status value',
+    'IOSB.Status constant',
     'IOSB.Information',
-    'Requestor PID'
+    'Requestor PID',
+    'Emulated',
+    'Associated data',
+    'Data stripped',
+    'Data size'
+  );
+
+  RequestListModelColumnValueTypes : Array [0..Ord(rlmctDataSize)] Of ERequestListModelColumnValueType = (
+    rlmcvtInteger,
+    rlmcvtTime,
+    rlmcvtRequestType,
+    rlmcvtInteger,
+    rlmcvtString,
+    rlmcvtInteger,
+    rlmcvtString,
+    rlmcvtInteger,
+    rlmcvtString,
+    rlmcvtMajorFunction,
+    rlmcvtMinorFunction,
+    rlmcvtInteger,
+    rlmcvtInteger,
+    rlmcvtString,
+    rlmcvtInteger,
+    rlmcvtInteger,
+    rlmcvtInteger,
+    rlmcvtInteger,
+    rlmcvtInteger,
+    rlmcvtInteger,
+    rlmcvtInteger,
+    rlmcvtIRQL,
+    rlmcvtProcessorMode,
+    rlmcvtProcessorMode,
+    rlmcvtInteger,
+    rlmcvtString,
+    rlmcvtInteger,
+    rlmcvtInteger,
+    rlmcvtInteger,
+    rlmcvtInteger,
+    rlmcvtInteger,
+    rlmcvtInteger
   );
 
 Type
-  TDriverRequest = Class
+  TDriverRequest = Class (TGeneralRequest)
   Private
-    FId : Cardinal;
-    FDriverName : WideString;
-    FDeviceName : WideString;
-    FDriverObject : Pointer;
-    FDeviceObject : Pointer;
-    FRequestType : ERequestType;
-    FResultType : ERequestResultType;
-    FResultValue : NativeUInt;
-    FTime : UInt64;
-    FThreadId : THandle;
-    FProcessId : THandle;
-    FIRQL : Byte;
-  Protected
-    Procedure SetDriverName(AName:WideString);
-    Procedure SetDeviceName(AName:WideString);
+    FHighlight : Boolean;
+    FHighlightColor : Cardinal;
+    Procedure ProcessParsers(AParsers:TObjectList<TDataParser>; ALines:TStrings);
   Public
-    Constructor Create(Var ARequest:REQUEST_HEADER); Reintroduce;
-
+    Class Function GetBaseColumnName(AColumnType:ERequestListModelColumnType):WideString;
     Function GetColumnName(AColumnType:ERequestListModelColumnType):WideString; Virtual;
     Function GetColumnValue(AColumnType:ERequestListModelColumnType; Var AResult:WideString):Boolean; Virtual;
-    Procedure SaveToStream(AStream:TStream); Virtual;
-    Procedure SaveToFile(AFileName:WideString); Virtual;
+    Function GetColumnValueRaw(AColumnType:ERequestListModelColumnType; Var AValue:Pointer; Var AValueSize:Cardinal):Boolean; Virtual;
+    Procedure SaveToStream(AStream:TStream; AParsers:TObjectList<TDataParser>; ABinary:Boolean = False); Virtual;
+    Procedure SaveToFile(AFileName:WideString; AParsers:TObjectList<TDataParser>; ABinary:Boolean = False); Virtual;
 
-    Class Function GetBaseColumnName(AColumnType:ERequestListModelColumnType):WideString;
-    Class Function IOCTLToString(AControlCode:Cardinal):WideString;
-    Class Function RequestTypeToString(ARequestType:ERequestType):WideString;
-    Class Function RequestResultToString(AResult:NativeUInt; AResultType:ERequestResultType):WideString;
-    Class Function NTSTATUSToString(AValue:Cardinal):WideString;
-    Class Function AccessModeToString(AMode:Byte):WideString;
-    Class Function IRQLToString(AValue:Byte):WideString;
-    Class Function MajorFunctionToString(AMajor:Byte):WideString;
-    Class Function MinorFunctionToString(AMajor:Byte; AMinor:Byte):WideString;
+    Class Function CreatePrototype(AType:ERequestType):TDriverRequest;
 
-    Property Id : Cardinal Read FId;
-    Property DriverName : WideString Read FDriverName Write SetDriverName;
-    Property DeviceName : WideString Read FDeviceName Write SetDeviceName;
-    Property DriverObject : Pointer Read FDriverObject;
-    Property DeviceObject : Pointer Read FDeviceObject;
-    Property RequestType : ERequestType Read FRequestType;
-    Property ResultType : ERequestResultType Read FResultType;
-    Property ResultValueRaw : NativeUInt Read FResultValue;
-    Property TimeRaw : UInt64 Read FTime;
-    Property ThreadId : THandle Read FThreadId;
-    Property ProcessId : THandle Read FProcessId;
-    Property IRQL : Byte Read FIRQL;
+    Property Highlight : Boolean Read FHighlight Write FHighlight;
+    Property HighlightColor : Cardinal Read FHighlightColor Write FHighlightColor;
   end;
 
   TDriverRequestComparer = Class (TComparer<TDriverRequest>)
@@ -130,13 +163,13 @@ Type
 
   TDriverUnloadRequest = Class (TDriverRequest)
   Public
-    Constructor Create(Var ARequest:REQUEST_UNLOAD); Reintroduce;
+    Constructor Create(Var ARequest:REQUEST_UNLOAD); Overload;
     Function GetColumnValue(AColumnType:ERequestListModelColumnType; Var AResult:WideString):Boolean; Override;
   end;
 
   TAddDeviceRequest = Class (TDriverRequest)
   Public
-    Constructor Create(Var ARequest:REQUEST_ADDDEVICE); Reintroduce;
+    Constructor Create(Var ARequest:REQUEST_ADDDEVICE); Overload;
   end;
 
 
@@ -145,30 +178,39 @@ Type
     FIRPAddress : Pointer;
     FIOSBStatus : Cardinal;
     FIOSBInformation : NativeUInt;
-    FProcessId : THandle;
-    FThreadId : THandle;
+    FMajorFunction : Cardinal;
+    FMinorFunction : Cardinal;
   Public
-    Constructor Create(Var ARequest:REQUEST_IRP_COMPLETION); Reintroduce;
+    Constructor Create(Var ARequest:REQUEST_IRP_COMPLETION); Overload;
 
+    Function GetColumnName(AColumnType:ERequestListModelColumnType):WideString; Override;
+    Function GetColumnValueRaw(AColumnType:ERequestListModelColumnType; Var AValue:Pointer; Var AValueSize:Cardinal):Boolean; Override;
     Function GetColumnValue(AColumnType:ERequestListModelColumnType; Var AResult:WideString):Boolean; Override;
+
     Property Address : Pointer Read FIRPAddress;
     Property IOSBStatus : Cardinal Read FIOSBStatus;
     Property IOSBInformation : NativeUInt Read FIOSBInformation;
-    Property ProcessId : THandle Read FProcessId;
-    Property ThreadId : THandle Read FThreadId;
+    Property MajorFunction : Cardinal Read FMajorFunction;
+    Property MinorFunction : Cardinal Read FMinorFunction;
   end;
 
   TStartIoRequest = Class (TDriverRequest)
   Public
-    Constructor Create(Var ARequest:REQUEST_STARTIO); Reintroduce;
+    Constructor Create(Var ARequest:REQUEST_STARTIO); Overload;
   end;
+
+  TRequestListModelOnRequestProcessed = Procedure (ARequest:TDriverRequest; Var AStore:Boolean) Of Object;
 
   TRequestListModel = Class (TListModel<TDriverRequest>)
     Private
       FRequests : TList<TDriverRequest>;
       FDriverMap : TDictionary<Pointer, WideString>;
       FDeviceMap : TDictionary<Pointer, WideString>;
+      FFileMap : TDictionary<Pointer, WideString>;
+      FParsers : TObjectList<TDataParser>;
+      FOnRequestProcessed : TRequestListModelOnRequestProcessed;
     Protected
+      Procedure OnAdvancedCustomDrawItemCallback(Sender: TCustomListView; Item: TListItem; State: TCustomDrawState; Stage: TCustomDrawStage; var DefaultDraw: Boolean); Override;
       Function GetColumn(AItem:TDriverRequest; ATag:NativeUInt):WideString; Override;
       Procedure FreeItem(AItem:TDriverRequest); Override;
       Function _Item(AIndex:Integer):TDriverRequest; Override;
@@ -182,15 +224,21 @@ Type
       Procedure Clear; Override;
       Function RowCount : Cardinal; Override;
       Function Update:Cardinal; Override;
-      Procedure SaveToStream(AStream:TStream);
-      Procedure SaveToFile(AFileName:WideString);
+      Procedure SaveToStream(AStream:TStream; ABinary:Boolean = False);
+      Procedure SaveToFile(AFileName:WideString; ABinary:Boolean = False);
+      Procedure LoadFromStream(AStream:TStream);
+      Procedure LoadFromFile(AFileName:WideString);
+      Procedure Reevaluate;
+
+      Property Parsers : TObjectList<TDataParser> Read FParsers Write FParsers;
+      Property OnRequestProcessed : TRequestListModelOnRequestProcessed Read FOnRequestProcessed Write FOnRequestProcessed;
     end;
 
 Implementation
 
 Uses
   SysUtils, NameTables, IRPRequest, FastIoRequest,
-  XXXDetectedRequests, Utils;
+  XXXDetectedRequests, FileObjectNameXXXRequest, Utils;
 
 (** TDriverRequestComparer **)
 
@@ -205,61 +253,171 @@ end;
 
 (** TDriverRequest **)
 
-Constructor TDriverRequest.Create(Var ARequest:REQUEST_HEADER);
+Class Function TDriverRequest.CreatePrototype(AType:ERequestType):TDriverRequest;
 begin
-Inherited Create;
-FId := ARequest.Id;
-FDriverObject := ARequest.Driver;
-FDriverName := '';
-FDeviceObject := ARequest.Device;
-FDeviceName := '';
-FTime := ARequest.Time;
-FRequestType := ARequest.RequestType;
-FResultType := ARequest.ResultType;
-FResultValue := NativeUInt(ARequest.Other);
-FProcessId := ARequest.ProcessId;
-FThreadId := ARequest.ThreadId;
-FIRQL := ARequest.Irql;
+Case AType Of
+  ertIRP: Result := TIRPRequest.Create;
+  ertIRPCompletion: Result := TIRPCompleteRequest.Create;
+  ertAddDevice: Result := TAddDeviceRequest.Create;
+  ertDriverUnload: Result := TDriverUnloadRequest.Create;
+  ertFastIo: Result := TFastIoRequest.Create;
+  ertStartIo: Result := TStartIoRequest.Create;
+  ertDriverDetected : Result := TDriverDetectedRequest.Create;
+  ertDeviceDetected : Result := TDeviceDetectedRequest.Create;
+  ertFileObjectNameAssigned : Result := TFileObjectNameAssignedRequest.Create;
+  ertFileObjectNameDeleted : Result := TFileObjectNameDeletedRequest.Create;
+  Else Result := TDriverRequest.Create;
+  end;
 end;
 
-Procedure TDriverRequest.SaveToStream(AStream: TStream);
+Procedure TDriverRequest.ProcessParsers(AParsers:TObjectList<TDataParser>; ALines:TStrings);
 Var
+  I : Integer;
+  err : Cardinal;
+  _handled : ByteBool;
+  names : TStringList;
+  values : TStringList;
+  pd : TDataParser;
+begin
+If Assigned(AParsers) Then
+  begin
+  names := TStringList.Create;
+  values := TStringList.Create;
+  For pd In AParsers Do
+    begin
+    err := pd.Parse(Self, _handled, names, values);
+    If (err = ERROR_SUCCESS) And (_handled) Then
+      begin
+      ALines.Add(Format('Data (%s)', [pd.Name]));
+      For I := 0 To values.Count - 1 Do
+        begin
+        If names.Count > 0 Then
+          ALines.Add(Format('  %s: %s', [names[I], values[I]]))
+        Else ALines.Add('  ' + values[I]);
+        end;
+
+      values.Clear;
+      names.Clear;
+      end;
+    end;
+
+  values.Free;
+  names.Free;
+  end;
+end;
+
+
+Procedure TDriverRequest.SaveToStream(AStream: TStream; AParsers:TObjectList<TDataParser>; ABinary:Boolean = False);
+Var
+  reqSize : Cardinal;
   s : TStringList;
   value : WideString;
   ct : ERequestListModelColumnType;
 begin
-s := TStringList.Create;
-For ct := Low(ERequestListModelColumnType) To High(ERequestListModelColumnType) Do
+If Not ABinary Then
   begin
-  If GetColumnValue(ct, value) Then
-    s.Add(Format('%s = %s', [GetColumnName(ct), value]));
-  end;
+  s := TStringList.Create;
+  For ct := Low(ERequestListModelColumnType) To High(ERequestListModelColumnType) Do
+    begin
+    If GetColumnValue(ct, value) Then
+      begin
+      If value <> '' Then
+        s.Add(Format('%s = %s', [GetColumnName(ct), value]));
+      end;
+    end;
 
-s.Add('');
-s.SaveToStream(AStream);
-s.Free;
+  If DataSize > 0 Then
+    ProcessParsers(AParsers, s);
+
+  s.Add('');
+  s.SaveToStream(AStream);
+  s.Free;
+  end
+Else begin
+  reqSize := IRPMonDllGetRequestSize(FRaw);
+  AStream.Write(reqSize, SizeOf(reqSize));
+  AStream.Write(FRaw^, reqSize);
+  end;
 end;
 
-Procedure TDriverRequest.SaveToFile(AFileName: WideString);
+Procedure TDriverRequest.SaveToFile(AFileName: WideString; AParsers:TObjectList<TDataParser>; ABinary:Boolean = False);
 Var
   F : TFileStream;
 begin
 F := TFileStream.Create(AFileName, fmCreate Or fmOpenWrite);
 Try
-  SaveToStream(F);
+  SaveToStream(F, AParsers, ABinary);
 Finally
   F.Free;
   end;
 end;
 
-Procedure TDriverRequest.SetDriverName(AName:WideString);
+Function TDriverRequest.GetColumnValueRaw(AColumnType:ERequestListModelColumnType; Var AValue:Pointer; Var AValueSize:Cardinal):Boolean;
 begin
-FDriverName := AName;
-end;
-
-Procedure TDriverRequest.SetDeviceName(AName:WideString);
-begin
-FDeviceName := AName;
+Result := True;
+Case AColumnType Of
+  rlmctId: begin
+    AValue := @FId;
+    AValueSIze := SizeOf(FId);
+    end;
+  rlmctTime: begin
+    AValue := @FTime;
+    AValueSIze := SizeOf(FTime);
+    end;
+  rlmctRequestType: begin
+    AValue := @FRequestType;
+    AValueSIze := SizeOf(FRequestType);
+    end;
+  rlmctDeviceObject: begin
+    AValue := @FDeviceObject;
+    AValueSIze := SizeOf(FDeviceObject);
+    end;
+  rlmctDeviceName: begin
+    AValue := PWideChar(FDeviceName);
+    AValueSize := 0;
+    end;
+  rlmctDriverObject: begin
+    AValue := @FDriverObject;
+    AValueSize := SizeOf(FDriverObject);
+    end;
+  rlmctDriverName: begin
+    AValue := PWideChar(FDriverName);
+    AValueSize := 0;
+    end;
+  rlmctResultValue: begin
+    AValue := @FResultValue;
+    AValueSIze := SizeOf(FTime);
+    end;
+  rlmctThreadId: begin
+    AValue := @FThreadId;
+    AValueSIze := SizeOf(FThreadId);
+    end;
+  rlmctProcessId: begin
+    AValue := @FProcessId;
+    AValueSIze := SizeOf(FProcessId);
+    end;
+  rlmctIRQL: begin
+    AValue := @FIrql;
+    AValueSIze := SizeOf(FIrql);
+    end;
+  rlmctDataAssociated : begin
+    AValue := @FDataPresent;
+    AValueSize := SizeOf(FDataPresent);
+    end;
+  rlmctDataStripped : begin
+    AValue := @FDataStripped;
+    AValueSize := SizeOf(FDataStripped);
+    end;
+  rlmctEmulated : begin
+    AValue := @FEmulated;
+    AValueSize := SizeOf(FEmulated);
+    end;
+  rlmctDataSize : begin
+    AValue := @FDataSize;
+    AValueSize := SizeOf(FDataSize);
+    end
+  Else Result := False;
+  end;
 end;
 
 Function TDriverRequest.GetColumnValue(AColumnType:ERequestListModelColumnType; Var AResult:WideString):Boolean;
@@ -275,14 +433,53 @@ Case AColumnType Of
     AResult := DateTimeToStr(SystemTimeToDateTime(s));
     end;
   rlmctRequestType: AResult := RequestTypeToString(FRequestType);
-  rlmctDeviceObject: AResult := Format('0x%p', [FDeviceObject]);
-  rlmctDeviceName: AResult := FDeviceName;
-  rlmctDriverObject: AResult := Format('0x%p', [FDriverObject]);
-  rlmctDriverName: AResult := FDriverName;
-  rlmctResult: AResult := RequestResultToString(FResultValue, FResultType);
+  rlmctDeviceObject: begin
+    Result := Self.ClassType <> TDriverRequest;
+    If Result Then
+      AResult := Format('0x%p', [FDeviceObject]);
+    end;
+  rlmctDeviceName: begin
+    Result := Self.ClassType <> TDriverRequest;
+    If Result Then
+      AResult := FDeviceName;
+    end;
+  rlmctDriverObject: begin
+    Result := Self.ClassType <> TDriverRequest;
+    If Result Then
+      AResult := Format('0x%p', [FDriverObject]);
+    end;
+  rlmctDriverName: begin
+    Result := Self.ClassType <> TDriverRequest;
+    If Result Then
+      AResult := FDriverName;
+    end;
+  rlmctFileObject : begin
+    Result := Self.ClassType <> TDriverRequest;
+    If Result Then
+      AResult := Format('0x%p', [FFileObject]);
+    end;
+  rlmctFileName: begin
+    Result := Self.ClassType <> TDriverRequest;
+    If Result Then
+      AResult := FFileName;
+    end;
+  rlmctResultValue: begin
+    Result := Self.ClassType <> TDriverRequest;
+    If Result Then
+      AResult := RequestResultToString(FResultValue, FResultType);
+    end;
+  rlmctResultConstant: begin
+    Result := Self.ClassType <> TDriverRequest;
+    If Result Then
+      AResult := RequestResultToString(FResultValue, FResultType, True);
+    end;
   rlmctProcessId : AResult := Format('%u', [FProcessId]);
   rlmctThreadId :  AResult := Format('%u', [FThreadId]);
   rlmctIRQL : AResult := IRQLToString(FIRQL);
+  rlmctEmulated : AResult := BoolToStr(FEmulated, True);
+  rlmctDataAssociated : AResult := BoolToStr(FDataPresent, True);
+  rlmctDataStripped : AResult := BoolToStr(FDataStripped, True);
+  rlmctDataSize : AResult := Format('%d', [FDataSize]);
   Else Result := False;
   end;
 end;
@@ -297,227 +494,6 @@ begin
 Result := RequestListModelColumnNames[Ord(AColumnType)];
 end;
 
-Class Function TDriverRequest.IOCTLToString(AControlCode:Cardinal):WideString;
-begin
-Result := TablesIOCTLToString(AControlCode);
-end;
-
-Class Function TDriverRequest.MajorFunctionToString(AMajor:Byte):WideString;
-begin
-Case AMajor Of
-  0 : Result := 'Create';
-  1 : Result := 'CreateNamedPipe';
-  2 : Result := 'Close';
-  3 : Result := 'Read';
-  4 : Result := 'Write';
-  5 : Result := 'Query';
-  6 : Result := 'Set';
-  7 : Result := 'QueryEA';
-  8 : Result := 'SetEA';
-  9 : Result := 'Flush';
-  10 : Result := 'QueryVolume';
-  11 : Result := 'SetVolume';
-  12 : Result := 'DirectoryControl';
-  13 : Result := 'FSControl';
-  14 : Result := 'DeviceControl';
-  15 : Result := 'InternalDeviceControl';
-  16 : Result := 'Shutdown';
-  17 : Result := 'Lock';
-  18 : Result := 'Cleanup';
-  19 : Result := 'CreateMailslot';
-  20 : Result := 'QuerySecurity';
-  21 : Result := 'SetSecurity';
-  22 : Result := 'Power';
-  23 : Result := 'SystemControl';
-  24 : Result := 'DeviceChange';
-  25 : Result := 'QueryQuota';
-  26 : Result := 'SetQuota';
-  27 : Result := 'PnP';
-  Else Result := Format('0x%x>', [AMajor]);
-  end;
-end;
-
-Class Function TDriverRequest.MinorFunctionToString(AMajor:Byte; AMinor:Byte):WideString;
-begin
-Result := '';
-If AMajor = 27 Then
-  begin
-  Case AMinor Of
-    0 : Result := 'Start';
-    1 : Result := 'QueryRemove';
-    2 : Result := 'Remove';
-    3 : Result := 'CancelRemove';
-    4 : Result := 'Stop';
-    5 : Result := 'QueryStop';
-    6 : Result := 'CancelStop ';
-    7 : Result := 'QueryRelations';
-    8 : Result := 'QueryInterface';
-    9 : Result := 'QueryCapabilities';
-    10 : Result := 'QueryResources';
-    11 : Result := 'QueryResourceRequirements';
-    12 : Result := 'QueryDeviceText';
-    13 : Result := 'FilterResourceRequirements';
-    15 : Result := 'ReadConfig';
-    16 : Result := 'WriteConfig';
-    17 : Result := 'Eject';
-    18 : Result := 'SetLock';
-    19 : Result := 'QueryId';
-    20 : Result := 'QueryState';
-    21 : Result := 'QueryBusInfo';
-    22 : Result := 'UsageNotifications';
-    23 : Result := 'SurpriseRemoval';
-    25 : Result := 'Enumerated';
-    Else Result := Format('0x%x', [AMinor]);
-    end;
-  end
-Else If AMajor = 22 Then
-  begin
-  Case AMinor Of
-    0 : Result := 'WaitWake';
-    1 : Result := 'PowerSequence';
-    2 : Result := 'SetPower';
-    3 : Result := 'QueryPower';
-    end;
-  end
-Else If AMajor = 23 Then
-  begin
-  Case AMinor Of
-    0 : Result := 'QueryAllData';
-    1 : Result := 'QuerySingleInstance';
-    2 : Result := 'ChangeSingleInstance';
-    3 : Result := 'ChangeSingleItem';
-    4 : Result := 'EnableEvents';
-    5 : Result := 'DisableEvents';
-    6 : Result := 'EnableCollection';
-    7 : Result := 'DisableCollection';
-    8 : Result := 'RegInfo';
-    9 : Result := 'Execute';
-    11 : Result := 'RegInfoEx';
-    Else Result := Format('0x%x', [AMinor]);
-    end;
-  end
-Else If AMajor = 12 Then
-  begin
-  Case AMinor Of
-    1 : Result := 'QueryDirectory';
-    2 : Result := 'ChangeNotify';
-    Else Result := Format('0x%x', [AMinor]);
-    end;
-  end
-Else If AMajor = 13 Then
-  begin
-  Case AMinor Of
-    0 : Result := 'UserRequest';
-    1 : Result := 'MountVolume';
-    2 : Result := 'VerifyVolume';
-    3 : Result := 'LoadFS';
-    4 : Result := 'KernelCall';
-    Else Result := Format('0x%x', [AMinor]);
-    end;
-  end
-Else If AMajor = 17 Then
-  begin
-  Case AMinor Of
-    1 : Result := 'Lock';
-    2 : Result := 'UnlockSingle';
-    3 : Result := 'UnlockAll';
-    4 : Result := 'UnlockAllByKey';
-    Else Result := Format('0x%x', [AMinor]);
-    end;
-  end
-Else If AMajor = 9 Then
-  begin
-  Case AMinor Of
-    1 : Result := 'FlushAndPurge';
-    2 : Result := 'DataOnly';
-    3 : Result := 'NoSync';
-    Else Result := Format('0x%x', [AMinor]);
-    end;
-  end
-Else If (AMajor = 3) Or (AMajor = 4) Then
-  begin
-  If ((AMinor And 1) <> 0) Then
-    Result := Result + ',Dpc';
-
-  If ((AMinor And 2) <> 0) Then
-    Result := Result + ',Mdl';
-
-  If ((AMinor And 3) <> 0) Then
-    Result := Result + ',Complete';
-
-  If ((AMinor And 4) <> 0) Then
-    Result := Result + ',Compressed';
-
-  If Result = '' Then
-    Result := 'Normal'
-  Else Delete(Result, 1, 1);
-  end;
-end;
-
-Class Function TDriverRequest.RequestTypeToString(ARequestType:ERequestType):WideString;
-begin
-Case ARequestType Of
-  ertIRP: Result := 'IRP';
-  ertIRPCompletion: Result := 'IRPComp';
-  ertAddDevice: Result := 'AddDevice';
-  ertDriverUnload: Result := 'Unload';
-  ertFastIo: Result := 'FastIo';
-  ertStartIo: Result := 'StartIo';
-  ertDriverDetected : Result := 'DriverDetected';
-  ertDeviceDetected : Result := 'DeviceDetected';
-  Else Result := Format('<unknown> (%u)', [Ord(ARequestType)]);
-  end;
-end;
-
-Class Function TDriverRequest.RequestResultToString(AResult:NativeUInt; AResultType:ERequestResultType):WideString;
-begin
-Case AResultType Of
-  rrtUndefined: Result := 'None';
-  rrtNTSTATUS: Result := Format('%s (0x%x)', [NTSTATUSToString(AResult), AResult]);
-  rrtBOOLEAN: begin
-    If AResult <> 0 Then
-      Result := 'TRUE'
-    Else Result := 'FALSE';
-    end;
-  Else Result := '';
-  end;
-end;
-
-Class Function TDriverRequest.NTSTATUSToString(AValue:Cardinal):WideString;
-begin
-Result := TablesNTSTATUSToString(AValue);
-end;
-
-Class Function TDriverRequest.IRQLToString(AValue:Byte):WideString;
-begin
-Result := Format('%u', [AValue]);
-Case AValue Of
-  0 : Result := 'Passive';
-  1 : Result := 'APC';
-  2 : Result := 'Dispatch';
-{$IFDEF WIN32}
-  27 : Result := 'Profile';
-  28 : Result := 'Clock';
-  29 : Result := 'IPI';
-  30 : Result := 'Power';
-  31 : Result := 'High';
-{$ELSE}
-  13 : Result := 'Clock';
-  14 : Result := 'Profile, IPI, Power';
-  15 : Result := 'High';
-{$ENDIF}
- Else Result := 'Interrupt';
-  end;
-end;
-
-Class Function TDriverRequest.AccessModeToString(AMode:Byte):WideString;
-begin
-Case AMode Of
-  0 : Result := 'KernelMode';
-  1 : Result := 'UserMode';
-  Else Result := Format('<unknown> (%u)', [AMode]);
-  end;
-end;
 
 
 (** TDriverUnloadRequest **)
@@ -533,7 +509,8 @@ Result := True;
 Case AColumnType Of
   rlmctDeviceObject,
   rlmctDeviceName,
-  rlmctResult : Result := False;
+  rlmctResultValue,
+  rlmctResultConstant  : Result := False;
   Else Result := Inherited GetColumnValue(AColumnType, AResult);
   end;
 end;
@@ -549,19 +526,55 @@ end;
 (** TIRPCompleteRequest **)
 
 Constructor TIRPCompleteRequest.Create(Var ARequest:REQUEST_IRP_COMPLETION);
+Var
+  d : Pointer;
 begin
 Inherited Create(ARequest.Header);
+d := PByte(@ARequest) + SizeOf(ARequest);
+AssignData(d, ARequest.DataSize);
 FIRPAddress := ARequest.IRPAddress;
 FIOSBStatus := ARequest.CompletionStatus;
 FIOSBInformation := ARequest.CompletionInformation;
+FMajorFunction := ARequest.MajorFunction;
+FMinorFunction := ARequest.MinorFunction;
+SetFileObject(ARequest.FileObject);
+end;
+
+Function TIRPCompleteRequest.GetColumnName(AColumnType:ERequestListModelColumnType):WideString;
+begin
+Result := '';
+Case AColumnType Of
+  rlmctSubType : Result := 'Major function';
+  rlmctMinorFunction : Result := 'Minor function';
+  Else Result := Inherited GetColumnName(AColumnType);
+  end;
+end;
+
+Function TIRPCompleteRequest.GetColumnValueRaw(AColumnType:ERequestListModelColumnType; Var AValue:Pointer; Var AValueSize:Cardinal):Boolean;
+begin
+Result := True;
+Case AColumnType Of
+  rlmctSubType : begin
+    AValue := @FMajorFunction;
+    AValueSize := SizeOf(FMajorFunction);
+    end;
+  rlmctMinorFunction : begin
+    AValue := @FMinorFunction;
+    AValueSize := SizeOf(FMinorFunction);
+    end;
+  Else Result := Inherited GetColumnValueRaw(AColumnType, AValue, AValueSize);
+  end;
 end;
 
 Function TIRPCompleteRequest.GetColumnValue(AColumnType:ERequestListModelColumnType; Var AResult:WideString):Boolean;
 begin
 Result := True;
 Case AColumnType Of
+  rlmctSubType : AResult := MajorFunctionToString(FMajorFunction);
+  rlmctMinorFunction : AResult := MinorFunctionToString(FMajorFunction, FMinorFunction);
   rlmctIRPAddress: AResult := Format('0x%p', [FIRPAddress]);
-  rlmctIOSBStatus : AResult := Format('%s (0x%x)', [NTSTATUSToString(FIOSBStatus), FIOSBStatus]);
+  rlmctIOSBStatusValue : AResult := Format('0x%x', [FIOSBStatus]);
+  rlmctIOSBStatusConstant : AResult := Format('%s', [NTSTATUSToString(FIOSBStatus)]);
   rlmctIOSBInformation : AResult := Format('0x%p', [Pointer(IOSBInformation)]);
   Else Result := Inherited GetColumnValue(AColumnType, AResult);
   end;
@@ -570,8 +583,12 @@ end;
 (** TStartIoRequest **)
 
 Constructor TStartIoRequest.Create(Var ARequest:REQUEST_STARTIO);
+Var
+  d : Pointer;
 begin
 Inherited Create(ARequest.Header);
+d := PByte(@ARequest) + SizeOf(aRequest);
+AssignData(d, ARequest.DataSize);
 end;
 
 (** TRequestListModel **)
@@ -599,10 +616,12 @@ end;
 
 Function TRequestListModel.Update:Cardinal;
 Var
+  keepRequest : Boolean;
   ur : PREQUEST_GENERAL;
   dr : TDriverRequest;
   deviceName : WideString;
   driverName : WideString;
+  fileName : WideString;
 begin
 Result := ERROR_SUCCESS;
 If Assigned(UpdateRequest) Then
@@ -630,6 +649,18 @@ If Assigned(UpdateRequest) Then
 
         FDeviceMap.Add(dr.DeviceObject, dr.DeviceName);
         end;
+      ertFileObjectNameAssigned : begin
+        dr := TFileObjectNameAssignedRequest.Create(ur.FileObjectNameAssigned);
+        If FFileMap.ContainsKey(dr.FileObject) Then
+          FFileMap.Remove(dr.FileObject);
+
+        FFileMap.Add(dr.FileObject, dr.FileName);
+        end;
+      ertFileObjectNameDeleted : begin
+        dr := TFileObjectNameDeletedRequest.Create(ur.FileObjectNameDeleted);
+        If FFileMap.ContainsKey(dr.FileObject) Then
+          FFileMap.Remove(dr.FileObject);
+        end
       Else dr := TDriverRequest.Create(ur.Header);
       end;
 
@@ -639,7 +670,16 @@ If Assigned(UpdateRequest) Then
     If FDeviceMap.TryGetValue(dr.DeviceObject, deviceName) Then
       dr.DeviceName := deviceName;
 
-    FRequests.Add(dr);
+    If FFileMap.TryGetValue(dr.FileObject, fileName) Then
+      dr.SetFileName(fileName);
+
+    keepRequest := True;
+    If Assigned(FOnRequestProcessed) Then
+      FOnRequestProcessed(dr, keepRequest);
+
+    If keepRequest Then
+      FRequests.Add(dr)
+    Else dr.Free;
     end;
 
   UpdateRequest := Nil;
@@ -702,11 +742,13 @@ UpdateRequest := Nil;
 FRequests := TList<TDriverRequest>.Create;
 FDriverMap := TDictionary<Pointer, WideString>.Create;
 FDeviceMap := TDictionary<Pointer, WideString>.Create;
+FFileMap := TDictionary<Pointer, WideString>.Create;
 RefreshMaps;
 end;
 
 Destructor TRequestListModel.Destroy;
 begin
+FFileMap.Free;
 FDriverMap.Free;
 FDeviceMap.Free;
 Clear;
@@ -714,7 +756,7 @@ FRequests.Free;
 Inherited Destroy;
 end;
 
-Procedure TRequestListModel.SaveToStream(AStream:TStream);
+Procedure TRequestListModel.SaveToStream(AStream:TStream; ABinary:Boolean = False);
 Var
   I : Integer;
   dr : TDriverRequest;
@@ -722,17 +764,52 @@ begin
 For I := 0 To RowCount - 1 Do
   begin
   dr := _Item(I);
-  dr.SaveToStream(AStream);
+  dr.SaveToStream(AStream, FParsers, ABinary);
   end;
 end;
 
-Procedure TRequestListModel.SaveToFile(AFileName:WideString);
+Procedure TRequestListModel.SaveToFile(AFileName:WideString; ABinary:Boolean = False);
 Var
   F : TFileStream;
 begin
 F := TFileStream.Create(AFileName, fmCreate Or fmOpenWrite);
 Try
-  SaveToStream(F);
+  SaveToStream(F, ABinary);
+Finally
+  F.Free;
+  end;
+end;
+
+Procedure TRequestListModel.LoadFromStream(AStream:TStream);
+Var
+  reqSize : Cardinal;
+  rg : PREQUEST_GENERAL;
+  l : TList<PREQUEST_GENERAL>;
+begin
+l := TList<PREQUEST_GENERAL>.Create;
+While AStream.Position < AStream.Size Do
+  begin
+  AStream.Read(reqSize, SizeOf(reqSize));
+  rg := AllocMem(reqSize);
+  AStream.Read(rg^, reqSize);
+  l.Add(rg);
+  end;
+
+UpdateRequest := l;
+Update;
+For rg In l Do
+  FreeMem(rg);
+
+l.Free;
+end;
+
+Procedure TRequestListModel.LoadFromFile(AFileName:WideString);
+Var
+  F : TFileStream;
+begin
+F := TFileStream.Create(AFileName, fmOpenRead);
+Try
+  LoadFromStream(F);
 Finally
   F.Free;
   end;
@@ -747,6 +824,63 @@ FRequests.Sort(c);
 c.Free;
 If Assigned(FDisplayer) Then
   FDisplayer.Invalidate;
+end;
+
+Procedure TRequestListModel.OnAdvancedCustomDrawItemCallback(Sender: TCustomListView; Item: TListItem; State: TCustomDrawState; Stage: TCustomDrawStage; var DefaultDraw: Boolean);
+Var
+  dr : TDriverRequest;
+begin
+dr := FRequests[Item.Index];
+With Sender.Canvas Do
+  begin
+  If Item.Selected Then
+    begin
+    Brush.Color := clHighLight;
+    Font.Color := clHighLightText;
+    Font.Style := [fsBold];
+    end
+  Else If dr.Highlight Then
+    begin
+    Brush.Color := dr.HighlightColor;
+    If (dr.HighlightColor >= $800000) Or
+       (dr.HighlightColor >= $008000) Or
+       (dr.HighlightColor >= $000080) Then
+       Font.Color := ClBlack
+    Else Font.Color := ClWhite;
+    end;
+  end;
+
+DefaultDraw := True;
+end;
+
+Procedure TRequestListModel.Reevaluate;
+Var
+  store : Boolean;
+  I : Integer;
+begin
+I := 0;
+While (I < FRequests.Count) Do
+  begin
+  If Assigned(FOnRequestProcessed) Then
+    begin
+    store := True;
+    FOnRequestProcessed(FRequests[I], store);
+    If Not store THen
+      begin
+      FRequests[I].Free;
+      FRequests.Delete(I);
+      Continue;
+      end;
+    end;
+
+  Inc(I);
+  end;
+
+If Assigned(FDisplayer) Then
+  begin
+  FDisplayer.Items.Count := FRequests.Count;
+  FDisplayer.Invalidate;
+  end;
 end;
 
 

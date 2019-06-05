@@ -32,7 +32,10 @@ uses
   WatchedDriverNames in 'WatchedDriverNames.pas',
   XXXDetectedRequests in 'XXXDetectedRequests.pas',
   LibJSON in 'LibJSON.pas',
-  FastIoRequest in 'FastIoRequest.pas';
+  FastIoRequest in 'FastIoRequest.pas',
+  DataParsers in 'DataParsers.pas',
+  FileObjectNameXXXRequest in 'FileObjectNameXXXRequest.pas',
+  FillterForm in 'FillterForm.pas' {FilterFrm};
 
 {$R *.res}
 

@@ -5,7 +5,7 @@
 			<FrameworkType>VCL</FrameworkType>
 			<MainSource>IRPMon.dpr</MainSource>
 			<Base>True</Base>
-			<Config Condition="'$(Config)'==''">Release</Config>
+			<Config Condition="'$(Config)'==''">Debug</Config>
 			<Platform Condition="'$(Platform)'==''">Win64</Platform>
 			<TargetedPlatforms>3</TargetedPlatforms>
 			<AppType>Application</AppType>
@@ -176,6 +176,12 @@
 			<DCCReference Include="XXXDetectedRequests.pas"/>
 			<DCCReference Include="LibJSON.pas"/>
 			<DCCReference Include="FastIoRequest.pas"/>
+			<DCCReference Include="DataParsers.pas"/>
+			<DCCReference Include="FileObjectNameXXXRequest.pas"/>
+			<DCCReference Include="FillterForm.pas">
+				<Form>FilterFrm</Form>
+				<FormType>dfm</FormType>
+			</DCCReference>
 			<BuildConfiguration Include="Release">
 				<Key>Cfg_2</Key>
 				<CfgParent>Base</CfgParent>

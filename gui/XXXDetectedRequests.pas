@@ -16,7 +16,7 @@ Type
       FDriverObject : Pointer;
       FDriverName : WideString;
     Public
-      Constructor Create(Var ARequest:REQUEST_DRIVER_DETECTED); Reintroduce;
+      Constructor Create(Var ARequest:REQUEST_DRIVER_DETECTED); Overload;
       Function GetColumnValue(AColumnType:ERequestListModelColumnType; Var AResult:WideString):Boolean; Override;
 
       Property DriverObject : Pointer Read FDriverObject;
@@ -29,7 +29,7 @@ Type
       FDeviceObject : Pointer;
       FDeviceName : WideString;
     Public
-      Constructor Create(Var ARequest:REQUEST_DEVICE_DETECTED); Reintroduce;
+      Constructor Create(Var ARequest:REQUEST_DEVICE_DETECTED); Overload;
       Function GetColumnValue(AColumnType:ERequestListModelColumnType; Var AResult:WideString):Boolean; Override;
 
       Property DriverObject : Pointer Read FDriverObject;
@@ -63,7 +63,8 @@ Result := True;
 Case AColumnType Of
   rlmctDeviceObject,
   rlmctDeviceName,
-  rlmctResult : Result := False;
+  rlmctResultValue,
+  rlmctResultConstant : Result := False;
   rlmctDriverObject : AResult := Format('0x%p', [FDriverObject]);
   rlmctDriverName : AResult := FDriverName;
   Else Result := Inherited GetColumnValue(AColumnType, AResult);
@@ -90,7 +91,8 @@ Function TDeviceDetectedRequest.GetColumnValue(AColumnType:ERequestListModelColu
 begin
 Result := True;
 Case AColumnType Of
-  rlmctResult : Result := False;
+  rlmctResultValue,
+  rlmctResultConstant : Result := False;
   rlmctDriverObject : AResult := Format('0x%p', [FDriverObject]);
   rlmctDeviceObject : AResult := Format('0x%p', [FDeviceObject]);
   rlmctDeviceName : AResult := FDeviceName;

@@ -9,7 +9,6 @@ Uses
 Type
   TFastIoRequest = Class (TDriverRequest)
   Private
-    FFileObject : Pointer;
     FPreviousMode : Byte;
     FIOSBStatus : Cardinal;
     FIOSBInformation : NativeUInt;
@@ -19,7 +18,7 @@ Type
     FArg3 : Pointer;
     FArg4 : Pointer;
   Public
-    Constructor Create(Var ARequest:REQUEST_FASTIO); Reintroduce;
+    Constructor Create(Var ARequest:REQUEST_FASTIO); Overload;
 
     Function GetColumnValue(AColumnType:ERequestListModelColumnType; Var AResult:WideString):Boolean; Override;
     Class Function FastIoTypeToString(AFastIoType:EFastIoOperationType):WideString;
@@ -45,7 +44,7 @@ FFastIoType := ARequest.FastIoType;
 FPreviousMode := ARequest.PreviousMode;
 FIOSBStatus := ARequest.IOSBStatus;
 FIOSBInformation := ARequest.IOSBInformation;
-FFileObject := ARequest.FileObject;
+SetFileObject(ARequest.FileObject);
 FArg1 := ARequest.Arg1;
 FArg2 := ARequest.Arg2;
 FArg3 := ARequest.Arg3;
@@ -57,7 +56,6 @@ begin
 Result := True;
 Case AColumnType Of
   rlmctSubType : AResult := FastIoTypeToString(FFastIoType);
-  rlmctFileObject : AResult := Format('0x%p', [FFileObject]);
   rlmctPreviousMode : AResult := AccessModeToString(FPreviousMode);
   rlmctArg1,
   rlmctArg2,
@@ -73,7 +71,7 @@ Case AColumnType Of
         end;
       end;
     end;
-  rlmctIOSBStatus : begin
+  rlmctIOSBStatusValue : begin
     Result := False;
     Case FFastIoType Of
       FastIoCheckIfPossible,
@@ -90,7 +88,27 @@ Case AColumnType Of
       MdlRead,
       PrepareMdlWrite,
       FastIoReadCompressed,
-      FastIoWriteCompressed : AResult := Format('0x%x (%s)', [FIOSBStatus, NTSTATUSToString(FIOSBStatus)]);
+      FastIoWriteCompressed : AResult := Format('0x%x', [FIOSBStatus]);
+      end;
+    end;
+  rlmctIOSBStatusConstant : begin
+    Result := False;
+    Case FFastIoType Of
+      FastIoCheckIfPossible,
+      FastIoRead,
+      FastIoWrite,
+      FastIoQueryBasicInfo,
+      FastIoQueryStandardInfo,
+      FastIoLock,
+      FastIoUnlockSingle,
+      FastIoUnlockAll,
+      FastIoUnlockAllByKey,
+      FastIoDeviceControl,
+      FastIoQueryNetworkOpenInfo,
+      MdlRead,
+      PrepareMdlWrite,
+      FastIoReadCompressed,
+      FastIoWriteCompressed : AResult := Format('%s', [NTSTATUSToString(FIOSBStatus)]);
       end;
     end;
   rlmctIOSBInformation : begin

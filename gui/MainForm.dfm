@@ -896,6 +896,43 @@ object MainFrm: TMainFrm
         OnDblClick = RequestDetailsMenuItemClick
       end
     end
+    object DataParsersTabSheet: TTabSheet
+      Caption = 'Data Parsers'
+      ImageIndex = 1
+      OnShow = DataParsersTabSheetShow
+      ExplicitLeft = 0
+      ExplicitTop = 0
+      ExplicitWidth = 0
+      ExplicitHeight = 0
+      object DataParsersListView: TListView
+        Left = 0
+        Top = 0
+        Width = 475
+        Height = 216
+        Align = alClient
+        Columns = <
+          item
+            Caption = 'Priority'
+          end
+          item
+            Caption = 'Name'
+            Width = 75
+          end
+          item
+            Caption = 'Version'
+          end
+          item
+            AutoSize = True
+            Caption = 'FileName'
+          end>
+        OwnerData = True
+        ReadOnly = True
+        RowSelect = True
+        TabOrder = 0
+        ViewStyle = vsReport
+        OnData = DataParsersListViewData
+      end
+    end
   end
   object MainMenu1: TMainMenu
     Left = 168
@@ -926,6 +963,10 @@ object MainFrm: TMainFrm
       end
       object N1: TMenuItem
         Caption = '-'
+      end
+      object OpenMenuItem: TMenuItem
+        Caption = 'Open...'
+        OnClick = OpenMenuItemClick
       end
       object SaveMenuItem: TMenuItem
         Caption = 'Save...'
@@ -967,6 +1008,10 @@ object MainFrm: TMainFrm
         Caption = 'Details...'
         OnClick = RequestDetailsMenuItemClick
       end
+      object FiltersMenuItem: TMenuItem
+        Caption = 'Filters...'
+        OnClick = FiltersMenuItemClick
+      end
     end
     object DriverMenuItem: TMenuItem
       Caption = 'Driver'
@@ -995,8 +1040,13 @@ object MainFrm: TMainFrm
     end
   end
   object LogSaveDialog: TSaveDialog
-    Filter = 'Log files [*.log]|*.log|All files [*.*]|*.*'
+    Filter = 'Text log files [*.log]|*.log|Binary log files [*.bin]|*.bin'
     Left = 160
+    Top = 88
+  end
+  object LogOpenDialog: TOpenDialog
+    Filter = 'Binary log files [*.bin]|*.bin|All files [*.*]|*.*'
+    Left = 192
     Top = 88
   end
 end

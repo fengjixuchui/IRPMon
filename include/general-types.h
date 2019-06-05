@@ -61,6 +61,8 @@ typedef enum _ERequestType {
 	ertStartIo,
 	ertDriverDetected,
 	ertDeviceDetected,
+	ertFileObjectNameAssigned,
+	ertFileObjectNameDeleted,
 } ERequesttype, *PERequestPype;
 
 /** Determines the type returned in the Result union of the @link(REQUEST_HEADER) structure. */
@@ -72,6 +74,9 @@ typedef enum _ERequestResultType {
 	/** The type is BOOLEAN. */
 	rrtBOOLEAN,
 } ERequestResultType, *PERequstResultType;
+
+#define REQUEST_FLAG_EMULATED			0x1
+#define REQUEST_FLAG_DATA_STRIPPED		0x2
 
 /** Header, containing information common for all request types. */
 typedef struct _REQUEST_HEADER {
@@ -91,6 +96,8 @@ typedef struct _REQUEST_HEADER {
 	PVOID Driver;
 	HANDLE ProcessId;
 	HANDLE ThreadId;
+	/** Various flags related to the request. */
+	USHORT Flags;
 	UCHAR Irql;
 	/** Result of the request servicing. The type of this field
 	    differs depending the type of the request. 
@@ -154,6 +161,9 @@ typedef struct _REQUEST_IRP {
 	ULONG_PTR IOSBInformation;
 	/** PID of the process originally requesting the operation. */
 	ULONG_PTR RequestorProcessId;
+	/** Number of data bytes associated with the request. */
+	SIZE_T DataSize;
+	// Data bytes
 } REQUEST_IRP, *PREQUEST_IRP;
 
 typedef struct _REQUEST_IRP_COMPLETION {
@@ -161,6 +171,12 @@ typedef struct _REQUEST_IRP_COMPLETION {
 	PVOID IRPAddress;
 	NTSTATUS CompletionStatus;
 	ULONG_PTR CompletionInformation;
+	ULONG MajorFunction;
+	ULONG MinorFunction;
+	PVOID Arguments[4];
+	PVOID FileObject;
+	ULONG_PTR DataSize;
+	// Data
 } REQUEST_IRP_COMPLETION, *PREQUEST_IRP_COMPLETION;
 
 /** Represents a fast I/O request. */
@@ -229,6 +245,9 @@ typedef struct _REQUEST_STARTIO {
 	/** Value of the Irp->IoStatus.Status after calling the original
 	    dispatch routine. */
 	LONG Status;
+	/** Length of data associated with the request. */
+	SIZE_T DataSize;
+	// Data
 } REQUEST_STARTIO, *PREQUEST_STARTIO;
 
 typedef struct _REQUEST_DRIVER_DETECTED {
@@ -261,6 +280,17 @@ typedef struct _REQUEST_PROCESS_EXITTED {
 	HANDLE ProcessId;
 } REQUEST_PROCESS_EXITTED, *PREQUEST_PROCESS_EXITTED;
 
+typedef struct _REQUEST_FILE_OBJECT_NAME_ASSIGNED {
+	REQUEST_HEADER Header;
+	void *FileObject;
+	ULONG NameLength;
+} REQUEST_FILE_OBJECT_NAME_ASSIGNED, *PREQUEST_FILE_OBJECT_NAME_ASSIGNED;
+
+typedef struct _REQUEST_FILE_OBJECT_NAME_DELETED {
+	REQUEST_HEADER Header;
+	void *FileObject;
+} REQUEST_FILE_OBJECT_NAME_DELETED, *PREQUEST_FILE_OBJECT_NAME_DELETED;
+
 typedef struct _REQUEST_GENERAL {
 	union {
 		REQUEST_HEADER Other;
@@ -274,6 +304,8 @@ typedef struct _REQUEST_GENERAL {
 		REQUEST_DEVICE_DETECTED DeviceDetected;
 		REQUEST_PROCESS_CREATED ProcessCreated;
 		REQUEST_PROCESS_EXITTED ProcessExitted;
+		REQUEST_FILE_OBJECT_NAME_ASSIGNED FileObjectNameAssigned;
+		REQUEST_FILE_OBJECT_NAME_DELETED FileObjectNameDeleted;
 	} RequestTypes;
 } REQUEST_GENERAL, *PREQUEST_GENERAL;
 
@@ -312,6 +344,7 @@ typedef struct _DRIVER_MONITOR_SETTINGS {
 	BOOLEAN MonitorFastIo;
 	BOOLEAN MonitorIRP;
 	BOOLEAN MonitorIRPCompletion;
+	BOOLEAN MonitorData;
 	/** IRPSettings for newly hooked devices. */
 	UCHAR IRPSettings[0x1b + 1];
 	/** FastIoSettings for newly hooked devices. */

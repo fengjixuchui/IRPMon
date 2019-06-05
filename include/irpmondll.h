@@ -355,6 +355,21 @@ IRPMONDLL_API DWORD WINAPI IRPMonDllDisconnect(VOID);
 IRPMONDLL_API DWORD WINAPI IRPMonDllGetRequest(PREQUEST_HEADER Request, DWORD Size);
 
 
+/** Get size of a request, in bytes.
+ *
+ *  @param Request Pointer to the request retrieved via @link(IRPMonDllGetRequest).
+ *
+ *  @returns
+ *  If successful, returns the request size, in bytes.
+ *  On error, zero is returned.
+ *
+ *  @remark
+ *  The routine just looks at request type and performs necessary
+ *  calculcations to obtain the total size, including general data
+ *  associated with the request.
+ */
+IRPMONDLL_API size_t WINAPI IRPMonDllGetRequestSize(const REQUEST_HEADER *Request);
+
 /** Open a handle to a given driver monitored by the IRPMon driver.
  *
  *  @param ObjectId ID of the target driver. IDs can be obtained from the
@@ -432,6 +447,12 @@ IRPMONDLL_API DWORD WINAPI IRPMonDllDriverNameWatchRegister(PWCHAR DriverName, P
 IRPMONDLL_API DWORD WINAPI IRPMonDllDriverNameWatchUnregister(PWCHAR DriverName);
 IRPMONDLL_API DWORD WINAPI IRPMonDllDriverNameWatchEnum(PDRIVER_NAME_WATCH_RECORD *Array, PULONG Count);
 IRPMONDLL_API VOID WINAPI IRPMonDllDriverNameWatchEnumFree(PDRIVER_NAME_WATCH_RECORD Array, ULONG Count);
+
+IRPMONDLL_API DWORD WINAPI IRPMonDllRequestEmulateDriverDetected(void *DriverObject, const wchar_t *DriverName, PREQUEST_DRIVER_DETECTED *Request);
+IRPMONDLL_API DWORD WINAPI IRPMonDllRequestEmulateDeviceDetected(void *DriverObject, void *DeviceObject, const wchar_t *DeviceName, PREQUEST_DEVICE_DETECTED *Request);
+IRPMONDLL_API DWORD WINAPI IRPMonDllRequestEmulateFileNameAssigned(void *FileObject, const wchar_t *FileName, PREQUEST_FILE_OBJECT_NAME_ASSIGNED *Request);
+IRPMONDLL_API DWORD WINAPI IRPMonDllRequestEmulateFileNameDeleted(void *FileObject, PREQUEST_FILE_OBJECT_NAME_DELETED *Request);
+IRPMONDLL_API void WINAPI IRPMonDllRequestEmulatedFree(PREQUEST_HEADER Header);
 
 
 /************************************************************************/

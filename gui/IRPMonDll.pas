@@ -12,6 +12,51 @@ Interface
 Uses
   Windows;
 
+Const
+  FILE_SUPERSEDE                 = $00000000;
+  FILE_OPEN                      = $00000001;
+  FILE_CREATE                    = $00000002;
+  FILE_OPEN_IF                   = $00000003;
+  FILE_OVERWRITE                 = $00000004;
+  FILE_OVERWRITE_IF              = $00000005;
+
+  FILE_DIRECTORY_FILE                     = $00000001;
+  FILE_WRITE_THROUGH                      = $00000002;
+  FILE_SEQUENTIAL_ONLY                    = $00000004;
+  FILE_NO_INTERMEDIATE_BUFFERING          = $00000008;
+  FILE_SYNCHRONOUS_IO_ALERT               = $00000010;
+  FILE_SYNCHRONOUS_IO_NONALERT            = $00000020;
+  FILE_NON_DIRECTORY_FILE                 = $00000040;
+  FILE_CREATE_TREE_CONNECTION             = $00000080;
+  FILE_COMPLETE_IF_OPLOCKED               = $00000100;
+  FILE_NO_EA_KNOWLEDGE                    = $00000200;
+  FILE_OPEN_REMOTE_INSTANCE               = $00000400;
+  FILE_RANDOM_ACCESS                      = $00000800;
+  FILE_DELETE_ON_CLOSE                    = $00001000;
+  FILE_OPEN_BY_FILE_ID                    = $00002000;
+  FILE_OPEN_FOR_BACKUP_INTENT             = $00004000;
+  FILE_NO_COMPRESSION                     = $00008000;
+  FILE_OPEN_REQUIRING_OPLOCK              = $00010000;
+  FILE_DISALLOW_EXCLUSIVE                 = $00020000;
+  FILE_SESSION_AWARE                      = $00040000;
+  FILE_RESERVE_OPFILTER                   = $00100000;
+  FILE_OPEN_REPARSE_POINT                 = $00200000;
+  FILE_OPEN_NO_RECALL                     = $00400000;
+  FILE_OPEN_FOR_FREE_SPACE_QUERY          = $00800000;
+
+
+  LABEL_SECURITY_INFORMATION                 = $00000010;
+  ATTRIBUTE_SECURITY_INFORMATION             = $00000020;
+  SCOPE_SECURITY_INFORMATION                 = $00000040;
+  PROCESS_TRUST_LABEL_SECURITY_INFORMATION   = $00000080;
+  ACCESS_FILTER_SECURITY_INFORMATION         = $00000100;
+  BACKUP_SECURITY_INFORMATION                = $00010000;
+
+  PROTECTED_DACL_SECURITY_INFORMATION        = $80000000;
+  PROTECTED_SACL_SECURITY_INFORMATION        = $40000000;
+  UNPROTECTED_DACL_SECURITY_INFORMATION      = $20000000;
+  UNPROTECTED_SACL_SECURITY_INFORMATION      = $10000000;
+
 Type
   BUS_QUERY_ID_TYPE = (
     BusQueryDeviceID = 0,       // <Enumerator>\<Enumerator-specific device id>
@@ -81,6 +126,7 @@ Type
         Padding2 : Cardinal;
 {$ENDIF}
         IoControlCode : Cardinal;
+        Type3InputBuffer : Pointer;
         end; );
       5 : (VerifyVolume : Record
         NotUsed : Pointer;
@@ -158,6 +204,46 @@ Type
         BufferSize : Cardinal;
         Buffer : Pointer;
         end; );
+      20 : (QueryDirectory : Record
+        Length : Cardinal;
+        FileName : Pointer;
+        FileInformationClass : Cardinal;
+{$IFNDEF WIN32}
+        Padding : Cardinal;
+{$ENDIF}
+        FlieIndex : Cardinal;
+        end; );
+      21 : (NotifyDirectory : Record
+        Length : Cardinal;
+{$IFNDEF WIN32}
+        Padding : Cardinal;
+{$ENDIF}
+        CompletionFilter : Cardinal;
+        end; );
+    22 : (QuerySecurity : Record
+        SecurityInformation : Cardinal;
+{$IFNDEF WIN32}
+        Padding : Cardinal;
+{$ENDIF}
+        Length : Cardinal;
+        end; );
+    23 : (SetSecurity : Record
+        SecurityInformation : Cardinal;
+        SecurityDescriptor : Pointer;
+        end; );
+    24 : (Create : Record
+        SecurityContext : Pointer;
+        Options : Cardinal;
+{$IFNDEF WIN32}
+        Padding : Cardinal;
+{$ENDIF}
+        FileAttributes : Word;
+        ShareAccess : Word;
+{$IFNDEF WIN32}
+        Padding2 : Cardinal;
+{$ENDIF}
+        EaLength : Cardinal;
+        end);
     end;
 
   (** Enumerates all possible types of Fast I/O operations. *)
@@ -212,7 +298,12 @@ Type
     (** Previously unknown or not-monitored driver has been detected. *)
     ertDriverDetected,
     (** A new device has been detected. **)
-    ertDeviceDetected);
+    ertDeviceDetected,
+    (** An IRP_MJ_CREATE has just been performed on a file object **)
+    ertFileObjectNameAssigned,
+    (** Last handle to a file object has been closed (IRP_MJ_CLEANUP) **)
+    ertFileObjectNameDeleted
+  );
   ERequesttype = _ERequestType;
   PERequesttype = ^ERequesttype;
 
@@ -227,6 +318,11 @@ Type
   ERequestResultType = _ERequestResultType;
   PERequestResultType = ^ERequestResultType;
 
+Const
+  REQUEST_FLAG_EMULATED         = $1;
+  REQUEST_FLAG_DATA_STRIPPED    = $2;
+
+Type
   (** Header, containing information common for all request types. *)
   _REQUEST_HEADER = Record
 	  Nothing1 : Pointer;
@@ -246,6 +342,7 @@ Type
 	  Driver : Pointer;
     ProcessId : THandle;
     ThreadId : THandle;
+    Flags : Word;
     Irql : Byte;
 	  (** Result of the request servicing. The type of this field
 	    differs depending the type of the request.
@@ -290,6 +387,8 @@ Type
     IOSBInformation : NativeUInt;
 	  (** PID of the process originally requesting the operation. **)
     RequestorProcessId : NativeUInt;
+    DataSize : NativeUInt;
+    // Data
     end;
   REQUEST_IRP = _REQUEST_IRP;
   PREQUEST_IRP = ^REQUEST_IRP;
@@ -299,6 +398,11 @@ Type
 	  IRPAddress : Pointer;
 	  CompletionStatus : Cardinal;
 	  CompletionInformation : NativeUInt;
+    MajorFunction : Cardinal;
+    MinorFunction : Cardinal;
+    Arguments : Packed Array [0..3] Of Pointer;
+    FileObject : Pointer;
+    DataSize : NativeUInt;
     end;
   REQUEST_IRP_COMPLETION = _REQUEST_IRP_COMPLETION;
   PREQUEST_IRP_COMPLETION = ^REQUEST_IRP_COMPLETION;
@@ -375,6 +479,8 @@ Type
 	  (** Value of the Irp->IoStatus.Status after calling the original
 	    dispatch routine. *)
 	  Status : Cardinal;
+    (** Length of data associated with the request. *)
+    DataSize : NativeUInt;
     end;
   REQUEST_STARTIO = _REQUEST_STARTIO;
   PREQUEST_STARTIO = ^REQUEST_STARTIO;
@@ -393,6 +499,21 @@ Type
   REQUEST_DEVICE_DETECTED = _REQUEST_DEVICE_DETECTED;
   PREQUEST_DEVICE_DETECTED = ^REQUEST_DEVICE_DETECTED;
 
+  _REQUEST_FILE_OBJECT_NAME_ASSIGNED = Record
+    Header : REQUEST_HEADER;
+    FileObject : Pointer;
+    FileNameLength : Cardinal;
+    end;
+  REQUEST_FILE_OBJECT_NAME_ASSIGNED = _REQUEST_FILE_OBJECT_NAME_ASSIGNED;
+  PREQUEST_FILE_OBJECT_NAME_ASSIGNED = ^REQUEST_FILE_OBJECT_NAME_ASSIGNED;
+
+  _REQUEST_FILE_OBJECT_NAME_DELETED = Record
+    Header : REQUEST_HEADER;
+    FileObject : Pointer;
+    end;
+  REQUEST_FILE_OBJECT_NAME_DELETED = _REQUEST_FILE_OBJECT_NAME_DELETED;
+  PREQUEST_FILE_OBJECT_NAME_DELETED = ^REQUEST_FILE_OBJECT_NAME_DELETED;
+
   _REQUEST_GENERAL = Record
     Case ERequestType Of
       ertUndefined : ( Header : REQUEST_HEADER);
@@ -404,6 +525,8 @@ Type
 		  ertStartIo : (StartIo : REQUEST_STARTIO);
       ertDriverDetected : (DriverDetected : REQUEST_DRIVER_DETECTED);
       ertDeviceDetected : (DeviceDetected : REQUEST_DEVICE_DETECTED);
+      ertFileObjectNameAssigned : (FileObjectNameAssigned : REQUEST_FILE_OBJECT_NAME_ASSIGNED);
+      ertFileObjectNameDeleted : (FileObjectNameDeleted : REQUEST_FILE_OBJECT_NAME_DELETED);
     end;
   REQUEST_GENERAL = _REQUEST_GENERAL;
   PREQUEST_GENERAL = ^REQUEST_GENERAL;
@@ -458,6 +581,7 @@ Type
     MonitorFastIo : ByteBool;
     MonitorIRP : ByteBool;
     MonitorIRPCompletion : ByteBool;
+    MonitorData : ByteBool;
     IRPSettings : IRP_SETTINGS;
     FastIoSettings : FASTIO_SETTINGS;
     end;
@@ -560,6 +684,7 @@ Procedure IRPMonDllSnapshotFree(ADriverInfo:PPIRPMON_DRIVER_INFO; ACount:Cardina
 Function IRPMonDllConnect(ASemaphore:THandle):Cardinal; StdCall;
 Function IRPMonDllDisconnect:Cardinal; StdCall;
 Function IRPMonDllGetRequest(ARequest:PREQUEST_HEADER; ASize:Cardinal):Cardinal; StdCall;
+Function IRPMonDllGetRequestSize(ARequest:PREQUEST_HEADER):Cardinal; StdCall;
 
 Function IRPMonDllOpenHookedDriver(AObjectId:Pointer; Var AHandle:THandle):Cardinal; StdCall;
 Function IRPMonDllCloseHookedDriverHandle(AHandle:THandle):Cardinal; StdCall;
@@ -610,12 +735,12 @@ Procedure IRPMonDllSnapshotFree(ADriverInfo:PPIRPMON_DRIVER_INFO; ACount:Cardina
 Function IRPMonDllConnect(ASemaphore:THandle):Cardinal; StdCall; External LibraryName;
 Function IRPMonDllDisconnect:Cardinal; StdCall; External LibraryName;
 Function IRPMonDllGetRequest(ARequest:PREQUEST_HEADER; ASize:Cardinal):Cardinal; StdCall; External LibraryName;
+Function IRPMonDllGetRequestSize(ARequest:PREQUEST_HEADER):Cardinal; StdCall; External LibraryName;
 
 Function IRPMonDllOpenHookedDriver(AObjectId:Pointer; Var AHandle:THandle):Cardinal; StdCall; External LibraryName;
 Function IRPMonDllCloseHookedDriverHandle(AHandle:THandle):Cardinal; StdCall; External LibraryName;
 Function IRPMonDllOpenHookedDevice(AObjectId:Pointer; Var AHandle:THandle):Cardinal; StdCall; External LibraryName;
 Function IRPMonDllCloseHookedDeviceHandle(AHandle:THandle):Cardinal; StdCall; External LibraryName;
-
 
 Function IRPMonDllClassWatchRegister(AClassGuid:PWideChar; AUpperFilter:ByteBool; ABeginning:ByteBool):Cardinal; StdCall; External LibraryName;
 Function IRPMonDllClassWatchUnregister(AClassGuid:PWideChar; AUpperFilter:ByteBool; ABeginning:ByteBool):Cardinal; StdCall; External LibraryName;
@@ -626,7 +751,6 @@ Function IRPMonDllDriverNameWatchRegister(ADriverName:PWideChar; Var AMonitorSet
 Function IRPMonDllDriverNameWatchUnregister(ADriverName:PWideChar):Cardinal; StdCall; External LibraryName;
 Function IRPMonDllDriverNameWatchEnum(Var AArray:PDRIVER_NAME_WATCH_RECORD; Var ACount:Cardinal):Cardinal; StdCall; External LibraryName;
 Procedure IRPMonDllDriverNameWatchEnumFree(AArray:PDRIVER_NAME_WATCH_RECORD; ACount:Cardinal); StdCall; External LibraryName;
-
 
 Function IRPMonDllInitialized:LongBool; StdCall; External LibraryName;
 Function IRPMonDllInitialize:Cardinal; StdCall; External LibraryName;
@@ -655,6 +779,7 @@ Procedure IRPMonDllSnapshotFree(ADriverInfo:PPIRPMON_DRIVER_INFO; ACount:Cardina
 Function IRPMonDllConnect(ASemaphore:THandle):Cardinal; StdCall; External LibraryName name '_IRPMonDllConnect@4';
 Function IRPMonDllDisconnect:Cardinal; StdCall; External LibraryName name '_IRPMonDllDisconnect@0';
 Function IRPMonDllGetRequest(ARequest:PREQUEST_HEADER; ASize:Cardinal):Cardinal; StdCall; External LibraryName name '_IRPMonDllGetRequest@8';
+Function IRPMonDllGetRequestSize(ARequest:PREQUEST_HEADER):Cardinal; StdCall; External LibraryName name '_IRPMonDllGetRequestSize@4';
 
 Function IRPMonDllOpenHookedDriver(AObjectId:Pointer; Var AHandle:THandle):Cardinal; StdCall; External LibraryName name '_IRPMonDllOpenHookedDriver@8';
 Function IRPMonDllCloseHookedDriverHandle(AHandle:THandle):Cardinal; StdCall; External LibraryName name '_IRPMonDllCloseHookedDriverHandle@4';

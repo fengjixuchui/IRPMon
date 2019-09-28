@@ -105,9 +105,8 @@ object FilterFrm: TFilterFrm
       Top = 57
       Width = 85
       Height = 22
-      Enabled = False
+      Selected = clWhite
       TabOrder = 5
-      Visible = False
     end
     object FilterActionComboBox: TComboBox
       Left = 468
@@ -115,15 +114,12 @@ object FilterFrm: TFilterFrm
       Width = 81
       Height = 21
       Style = csDropDownList
-      ItemIndex = 0
       TabOrder = 6
-      Text = 'None'
       OnChange = FilterActionComboBoxChange
       Items.Strings = (
         'None'
         'Include'
         'Exclude'
-        'Highlight'
         'Pass')
     end
     object AddButton: TButton
@@ -145,7 +141,7 @@ object FilterFrm: TFilterFrm
       OnClick = DeleteButtonClick
     end
     object EnabledCheckBox: TCheckBox
-      Left = 139
+      Left = 346
       Top = 59
       Width = 73
       Height = 17
@@ -153,6 +149,33 @@ object FilterFrm: TFilterFrm
       Checked = True
       State = cbChecked
       TabOrder = 9
+    end
+    object NextFilterComboBox: TComboBox
+      Left = 464
+      Top = 84
+      Width = 85
+      Height = 21
+      Style = csDropDownList
+      TabOrder = 10
+      Visible = False
+    end
+    object UpButton: TButton
+      Left = 126
+      Top = 72
+      Width = 57
+      Height = 25
+      Caption = 'Up'
+      TabOrder = 11
+      OnClick = UpDownButtonClick
+    end
+    object DownButton: TButton
+      Left = 189
+      Top = 72
+      Width = 57
+      Height = 25
+      Caption = 'Down'
+      TabOrder = 12
+      OnClick = UpDownButtonClick
     end
   end
   object LowerPanel: TPanel
@@ -190,7 +213,8 @@ object FilterFrm: TFilterFrm
     Checkboxes = True
     Columns = <
       item
-        Caption = '#'
+        AutoSize = True
+        Caption = 'Name'
       end
       item
         Caption = 'Type'
@@ -226,7 +250,7 @@ object FilterFrm: TFilterFrm
     OnAdvancedCustomDrawItem = FilterListViewAdvancedCustomDrawItem
     OnDblClick = FilterListViewDblClick
     OnDeletion = FilterListViewDeletion
+    OnSelectItem = FilterListViewSelectItem
     OnItemChecked = FilterListViewItemChecked
-    ExplicitTop = 113
   end
 end

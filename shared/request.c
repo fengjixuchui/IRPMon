@@ -40,6 +40,7 @@ size_t RequestGetSize(const REQUEST_HEADER *Header)
 	const REQUEST_DEVICE_DETECTED *der = CONTAINING_RECORD(Header, REQUEST_DEVICE_DETECTED, Header);
 	const REQUEST_FILE_OBJECT_NAME_ASSIGNED *ar = NULL;
 	const REQUEST_FILE_OBJECT_NAME_DELETED *dr = NULL;
+	const REQUEST_PROCESS_CREATED *pcr = CONTAINING_RECORD(Header, REQUEST_PROCESS_CREATED, Header);
 
 	switch (Header->Type) {
 		case ertIRP:
@@ -79,6 +80,12 @@ size_t RequestGetSize(const REQUEST_HEADER *Header)
 		case ertFileObjectNameDeleted:
 			dr = CONTAINING_RECORD(Header, REQUEST_FILE_OBJECT_NAME_DELETED, Header);
 			ret = sizeof(REQUEST_FILE_OBJECT_NAME_DELETED);
+			break;
+		case ertProcessCreated:
+			ret = sizeof(REQUEST_PROCESS_CREATED) + pcr->ImageNameLength + pcr->CommandLineLength;
+			break;
+		case ertProcessExitted:
+			ret = sizeof(REQUEST_PROCESS_EXITTED);
 			break;
 	}
 
@@ -176,6 +183,58 @@ DWORD RequestEmulateFileNameDeleted(void *FileObject, PREQUEST_FILE_OBJECT_NAME_
 		*Request = tmpRequest;
 		ret = ERROR_SUCCESS;
 	} else ret = GetLastError();
+
+	return ret;
+}
+
+
+DWORD RequestEmulateProcessCreated(HANDLE ProcessId, HANDLE ParentId, const wchar_t *ImageName, const wchar_t *CommandLine, PREQUEST_PROCESS_CREATED *Request)
+{
+	DWORD ret = ERROR_GEN_FAILURE;
+	PREQUEST_PROCESS_CREATED tmpRequest = NULL;
+	size_t imageNameLen = 0;
+	size_t commandLineLen = 0;
+
+	ret = S_OK;
+	if (ImageName != NULL)
+		ret = StringCbLengthW(ImageName, 65536, &imageNameLen);
+
+	if (ret == S_OK && CommandLine != NULL)
+		ret = StringCbLengthW(CommandLine, 65536, &commandLineLen);
+
+	if (ret == S_OK) {
+		tmpRequest = HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, sizeof(REQUEST_PROCESS_CREATED) + imageNameLen + commandLineLen);
+		if (tmpRequest != NULL) {
+			_RequestHeaderInit(&tmpRequest->Header, NULL, NULL, ertProcessCreated);
+			tmpRequest->ProcessId = ProcessId;
+			tmpRequest->ParentId = ParentId;
+			tmpRequest->ImageNameLength = imageNameLen;
+			memcpy(tmpRequest + 1, ImageName, tmpRequest->ImageNameLength);
+			tmpRequest->CommandLineLength = commandLineLen;
+			memcpy((unsigned char *)(tmpRequest + 1) + tmpRequest->ImageNameLength, CommandLine, tmpRequest->CommandLineLength);
+			*Request = tmpRequest;
+			ret = ERROR_SUCCESS;
+		} else ret = GetLastError();
+	}
+
+	return ret;
+}
+
+
+DWORD RequestEmulateProcessExitted(HANDLE ProcessId, PREQUEST_PROCESS_EXITTED *Request)
+{
+	DWORD ret = ERROR_GEN_FAILURE;
+	PREQUEST_PROCESS_EXITTED tmpRequest = NULL;
+
+	tmpRequest = HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, sizeof(REQUEST_PROCESS_EXITTED));
+	if (tmpRequest != NULL) {
+		_RequestHeaderInit(&tmpRequest->Header, NULL, NULL, ertProcessExitted);
+		tmpRequest->Header.ProcessId = ProcessId;
+		tmpRequest->ProcessId = ProcessId;
+		*Request = tmpRequest;
+		ret = ERROR_SUCCESS;
+	}
+	else ret = GetLastError();
 
 	return ret;
 }

@@ -63,6 +63,8 @@ typedef enum _ERequestType {
 	ertDeviceDetected,
 	ertFileObjectNameAssigned,
 	ertFileObjectNameDeleted,
+	ertProcessCreated,
+	ertProcessExitted,
 } ERequesttype, *PERequestPype;
 
 /** Determines the type returned in the Result union of the @link(REQUEST_HEADER) structure. */
@@ -269,9 +271,7 @@ typedef struct _REQUEST_PROCESS_CREATED {
 	HANDLE ProcessId;
 	HANDLE ParentId;
 	HANDLE CreatorId;
-	ULONG ImageNameOffset;
 	ULONG ImageNameLength;
-	ULONG CommandLineOffset;
 	ULONG CommandLineLength;
 } REQUEST_PROCESS_CREATED, *PREQUEST_PROCESS_CREATED;
 

@@ -1008,9 +1008,16 @@ object MainFrm: TMainFrm
         Caption = 'Details...'
         OnClick = RequestDetailsMenuItemClick
       end
+      object N2: TMenuItem
+        Caption = '-'
+      end
       object FiltersMenuItem: TMenuItem
         Caption = 'Filters...'
         OnClick = FiltersMenuItemClick
+      end
+      object HideExcludedRequestsMenuItem: TMenuItem
+        Caption = 'Hide excluded requests'
+        OnClick = HideExcludedRequestsMenuItemClick
       end
     end
     object DriverMenuItem: TMenuItem

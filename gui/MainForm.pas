@@ -54,6 +54,8 @@ Type
     FiltersMenuItem: TMenuItem;
     LogOpenDialog: TOpenDialog;
     OpenMenuItem: TMenuItem;
+    N2: TMenuItem;
+    HideExcludedRequestsMenuItem: TMenuItem;
     Procedure ClearMenuItemClick(Sender: TObject);
     procedure FormCreate(Sender: TObject);
     procedure CaptureEventsMenuItemClick(Sender: TObject);
@@ -73,6 +75,7 @@ Type
     procedure DataParsersTabSheetShow(Sender: TObject);
     procedure FiltersMenuItemClick(Sender: TObject);
     procedure OpenMenuItemClick(Sender: TObject);
+    procedure HideExcludedRequestsMenuItemClick(Sender: TObject);
   Private
 {$IFDEF FPC}
     FAppEvents: TApplicationProperties;
@@ -97,7 +100,6 @@ Type
     Procedure WriteSettings;
     Procedure ReadSettings;
     Procedure OnRequestProcessed(ARequest:TDriverRequest; Var AStore:Boolean);
-    Procedure CreateInitialFilters;
   Public
     ServiceTask : TDriverTaskObject;
     TaskList : TTaskOperationList;
@@ -200,6 +202,7 @@ Procedure TMainFrm.FormClose(Sender: TObject; var Action: TCloseAction);
 begin
 FAppEvents.Free;
 WriteSettings;
+DataParsersListView.Items.Count := 0;
 FParsers.Free;
 taskList.Add(hooLibraryFinalize, serviceTask);
 If UnloadOnExitMenuItem.Checked Then
@@ -218,8 +221,21 @@ FFilters.Free;
 end;
 
 Procedure TMainFrm.FormCreate(Sender: TObject);
+Var
+  fileName : WideString;
+  iniFile : TIniFile;
 begin
 FFilters := TObjectList<TRequestFilter>.Create;
+fileName := ExtractFilePath(Application.ExeName) + 'filters.ini';
+iniFile := Nil;
+Try
+  iniFile := TIniFile.Create(fileName);
+  If Not TRequestFilter.LoadList(iniFile, FFilters) Then
+    FFilters.Clear;
+Finally
+  iniFile.Free;
+  end;
+
 RequestListView.DoubleBuffered := True;
 {$IFNDEF FPC}
 FAppEvents := TApplicationEvents.Create(Self);
@@ -245,6 +261,7 @@ FModel.
     ColumnAdd(TDriverRequest.GetBaseColumnName(rlmctTime), Ord(rlmctTime)).
     ColumnAdd(TDriverRequest.GetBaseColumnName(rlmctThreadId), Ord(rlmctThreadId), False, 75).
     ColumnAdd(TDriverRequest.GetBaseColumnName(rlmctProcessId), Ord(rlmctProcessId), False, 75).
+    ColumnAdd(TDriverRequest.GetBaseColumnName(rlmctProcessName), Ord(rlmctProcessName)).
     ColumnAdd(TDriverRequest.GetBaseColumnName(rlmctIRQL), Ord(rlmctIRQL)).
     ColumnAdd(TDriverRequest.GetBaseColumnName(rlmctRequestType), Ord(rlmctRequestType)).
     ColumnAdd(TDriverRequest.GetBaseColumnName(rlmctDeviceObject), Ord(rlmctDeviceObject)).
@@ -270,7 +287,6 @@ FModel.
     ColumnAdd(TDriverRequest.GetBaseColumnName(rlmctRequestorMode), Ord(rlmctRequestorMode)).
     ColumnAdd(TDriverRequest.GetBaseColumnName(rlmctRequestorPID), Ord(rlmctRequestorPID)).
     ColumnAdd(TDriverRequest.GetBaseColumnName(rlmctDataAssociated), Ord(rlmctDataAssociated), False, 50).
-    ColumnAdd(TDriverRequest.GetBaseColumnName(rlmctDataAssociated), Ord(rlmctDataAssociated), False, 50).
     ColumnAdd(TDriverRequest.GetBaseColumnName(rlmctEmulated), Ord(rlmctEmulated), False, 50).
     ColumnAdd(TDriverRequest.GetBaseColumnName(rlmctDataSize), Ord(rlmctDataSize), False, 50);
 FModel.ColumnUpdateEnd;
@@ -293,8 +309,16 @@ Else begin
 FParsers := TObjectList<TDataParser>.Create;
 DataPrasersLoad(ExtractFileDir(Application.ExeName), FParsers);
 FModel.Parsers := FParsers;
-CreateInitialFilters;
 ReadSettings;
+end;
+
+Procedure TMainFrm.HideExcludedRequestsMenuItemClick(Sender: TObject);
+Var
+  M : TMenuItem;
+begin
+M := Sender As TMenuItem;
+M.Checked := Not M.Checked;
+FModel.FilterDisplayOnly := M.Checked;
 end;
 
 Procedure TMainFrm.IrpMonAppEventsException(Sender: TObject; E: Exception);
@@ -674,6 +698,7 @@ Try
   iniFIle.WriteBool('Driver', 'unload_on_exit', UnloadOnExitMenuItem.Checked);
   iniFIle.WriteBool('Driver', 'uninstall_on_exit', UninstallOnExitMenuItem.Checked);
   iniFile.WriteBool('General', 'CaptureEvents', CaptureEventsMenuItem.Checked);
+  iniFile.WriteBool('General', 'filter_display_only', HideExcludedRequestsMenuItem.Checked);
   For I := 0 To FModel.ColumnCount - 1 Do
     begin
     c := FModel.Columns[I];
@@ -710,6 +735,8 @@ Try
     Else CaptureEventsMenuItem.Checked := False;
     end;
 
+  FModel.FilterDisplayOnly := iniFile.ReadBool('General', 'filter_display_only', False);
+  HideExcludedRequestsMenuItem.Checked := FModel.FilterDisplayOnly;
   FModel.ColumnUpdateBegin;
   For I := 0 To FModel.ColumnCount - 1 Do
     begin
@@ -735,42 +762,41 @@ Var
   matchResult : Cardinal;
   rf : TRequestFilter;
   matchingRF : TRequestFilter;
+  allInclusive : Boolean;
+  allExclusive : Boolean;
 begin
+allInclusive := True;
+allExclusive := True;
 ARequest.Highlight := False;
 AStore := (FFilters.Count = 0);
 For rf In FFilters Do
   begin
+  If rf.Action = ffaInclude Then
+    allExclusive := False;
+
+  If rf.Action = ffaExclude Then
+    allInclusive := False;
+
   matchingRF := rf.Match(ARequest);
   If Assigned(matchingRF) Then
     begin
-    AStore := (matchingRF.Action In [ffaInclude, ffaHighlight]);
-    ARequest.Highlight := (matchingRF.Action = ffaHighlight);
-    If ARequest.Highlight Then
-      ARequest.HighlightColor := matchingRF.HighlightColor;
-
+    AStore := (matchingRF.Action = ffaInclude);
+    ARequest.Highlight := (matchingRF.HighlightColor <> $FFFFFF);
+    ARequest.HighlightColor := matchingRF.HighlightColor;
     Break;
     end;
   end;
+
+If Not Assigned(matchingRF) Then
+  begin
+  If allInclusive Then
+    AStore := False;
+
+  If allExclusive Then
+    AStore := True;
+  end;
 end;
 
-Procedure TMainFrm.CreateInitialFilters;
-Var
-  rf : TRequestFilter;
-begin
-rf := TRequestFilter.NewInstance(ertUndefined);
-rf.Name := '0';
-rf.SetAction(ffaHighlight, ClRed);
-rf.SetCondition(rlmctProcessId, rfoEquals, GetCurrentProcessId);
-rf.Enabled := True;
-FFilters.Add(rf);
-
-rf := TRequestFilter.NewInstance(ertUndefined);
-rf.Name := '1';
-rf.SetAction(ffaInclude);
-rf.SetCondition(rlmctRequestType, rfoAlwaysTrue, 0);
-rf.Enabled := True;
-FFilters.Add(rf);
-end;
 
 End.
 

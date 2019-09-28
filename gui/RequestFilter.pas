@@ -7,7 +7,7 @@ Unit RequestFilter;
 Interface
 
 Uses
-  Generics.Collections,
+  Generics.Collections, INIFiles,
   RequestListModel, IRPMonDll;
 
 Type
@@ -60,7 +60,6 @@ Type
     ffaUndefined,
     ffaInclude,
     ffaExclude,
-    ffaHighlight,
     ffaPassToFilter
   );
 
@@ -93,11 +92,16 @@ Type
     Function SupportedOperators:RequestFilterOperatorSet; Virtual;
     Function Copy:TRequestFilter;
     Function Match(ARequest:TDriverRequest; AChainStart:Boolean = True):TRequestFilter;
-    Function SetAction(AAction:EFilterAction; AHighlightColor:Cardinal = 0; ANextFilter:TRequestFilter = Nil):Cardinal;
+    Function SetAction(AAction:EFilterAction; AHighlightColor:Cardinal = $FFFFFF; ANextFilter:TRequestFilter = Nil):Cardinal;
     Function SetCondition(AColumn:ERequestListModelColumnType; AOperator:ERequestFilterOperator; AValue:UInt64):Boolean; Overload;
     Function SetCondition(AColumn:ERequestListModelColumnType; AOperator:ERequestFilterOperator; AValue:WideString):Boolean; Overload;
+    Function HasPredecessor:Boolean;
 
-    Class Function NewInstance(ARequestType:ERequestType):TRequestFilter;
+    Class Function NewInstance(ARequestType:ERequestType):TRequestFilter; Overload;
+    Class Function LoadList(AFile:TIniFile; AList:TList<TRequestFilter>):Boolean;
+    Class Function SaveList(AFile:TIniFIle; AList:TList<TRequestFilter>):Boolean;
+    Class Function GetByName(AName:WideString; AList:TList<TRequestFilter>):TRequestFilter;
+    Function Save(AFile:TIniFile):Boolean;
 
     Property Name : WideString Read FName Write FName;
     Property Field : ERequestListModelColumnType Read FField;
@@ -129,7 +133,7 @@ Type
 Implementation
 
 Uses
-  SysUtils, IRPRequest, FastIoRequest, FileObjectNameXXXRequest,
+  Classes, SysUtils, IRPRequest, FastIoRequest, FileObjectNameXXXRequest,
   XXXDetectedRequests;
 
 (** TRequestFilter **)
@@ -143,6 +147,7 @@ FOp := rfoAlwaysTrue;
 FAction := ffaInclude;
 FNextFilter := Nil;
 FPreviousFilter := Nil;
+FHighlightColor := $FFFFFF;
 Case FRequestType Of
   ertUndefined: FRequestPrototype := TDriverRequest.Create;
   ertIRP: FRequestPrototype := TIRPRequest.Create;
@@ -160,10 +165,143 @@ end;
 
 Destructor TRequestFilter.Destroy;
 begin
+RemoveFromChain;
 If Assigned(FRequestPrototype) Then
   FRequestPrototype.Free;
 
 Inherited Destroy;
+end;
+
+Function TRequestFilter.Save(AFile:TIniFile):Boolean;
+begin
+Try
+  AFile.WriteInteger(FName, 'RequestType', Ord(FRequestType));
+  AFile.WriteInteger(FName, 'Column', Ord(FField));
+  AFile.WriteInteger(FName, 'Operator', Ord(FOp));
+  AFile.WriteString(FName, 'Value', FStringValue);
+  AFile.WriteInteger(FName, 'Action', Ord(FAction));
+  AFile.WriteBool(FName, 'Enabled', FEnabled);
+  AFIle.WriteBool(FName, 'Negate', FNegate);
+  AFile.WriteInteger(FName, 'Color', FHighlightCOlor);
+  If Assigned(FNextFilter) Then
+    AFile.WriteString(FName, 'Next', FNextFilter.Name);
+
+  Result := True;
+Except
+  Result := False;
+  end;
+end;
+
+Class Function TRequestFilter.LoadList(AFile:TIniFile; AList:TList<TRequestFilter>):Boolean;
+Var
+  names : TStringList;
+  rf : TRequestFilter;
+  tmp : TRequestFilter;
+  nextF : TRequestFilter;
+  I : Integer;
+  _name : WideString;
+  _enabled : Boolean;
+  _negate : Boolean;
+  _type : ERequestType;
+  _column : ERequestListModelColumnType;
+  _op : ERequestFilterOperator;
+  _value : WideString;
+  _action : EFilterAction;
+  _color : Cardinal;
+  _next : WideString;
+  nextNames : TStringList;
+begin
+Result := True;
+nextNames := TStringList.Create;
+names := TStringList.Create;
+AFile.ReadSections(names);
+For _name In names Do
+  begin
+  Try
+    _type := ERequestType(AFile.ReadInteger(_name, 'RequestType', -1));
+    _column := ERequestListModelColumnType(AFile.ReadInteger(_name, 'Column', -1));
+    _op := ERequestFilterOperator(AFile.ReadInteger(_name, 'Operator', -1));
+    _value := AFile.ReadString(_name, 'Value', '');
+    _action := EFilterAction(AFile.ReadInteger(_name, 'Action', -1));
+    _enabled := AFile.ReadBool(_name, 'Enabled', True);
+    _negate := AFIle.ReadBool(_name, 'Negate', False);
+    _color := AFile.ReadInteger(_name, 'Color', $FFFFFF);
+    _next := AFile.ReadString(_name, 'Next', '');
+    rf := GetByName(_name, AList);
+    If Assigned(rf) Then
+      Continue;
+
+    rf := TRequestFilter.NewInstance(_type);
+    rf.Name := _name;
+    rf.Enabled := _enabled;
+    rf.Negate := _negate;
+    rf.SetCondition(_column, _op, _value);
+    rf.SetAction(_action, _color);
+    AList.Add(rf);
+    nextNames.Add(_next);
+  Except
+    Result := False;
+    end;
+  end;
+
+names.Free;
+If Result Then
+  begin
+  For I := 0 To AList.Count - 1 Do
+    begin
+    _next := nextNames[I];
+    If _next <> '' Then
+      begin
+      rf := AList[I];
+      tmp := GetByName(_next, AList);
+      If (Assigned(tmp)) And (rf.Action = ffaPassToFilter) THen
+        rf.SetAction(rf.Action, rf.HighlightColor, tmp)
+      end;
+    end;
+  end;
+
+nextNames.Free;
+end;
+
+Class Function TRequestFilter.SaveList(AFile:TIniFIle; AList:TList<TRequestFilter>):Boolean;
+Var
+  section : WideString;
+  names : TStringList;
+  rf : TRequestFilter;
+begin
+Result := True;
+names := TStringList.Create;
+AFIle.ReadSections(names);
+For section In names Do
+  AFile.EraseSection(section);
+
+names.Free;
+For rf  In AList Do
+  begin
+  Result := rf.Save(AFile);
+  If Not Result Then
+    Break;
+  end;
+end;
+
+Class Function TRequestFilter.GetByName(AName:WideString; AList:TList<TRequestFilter>):TRequestFilter;
+Var
+  tmp : TRequestFilter;
+begin
+Result := Nil;
+For tmp In AList Do
+  begin
+  If tmp.Name = AName Then
+    begin
+    Result := tmp;
+    Break;
+    end;
+  end;
+end;
+
+Function TRequestFilter.HasPredecessor:Boolean;
+begin
+Result := Assigned(FPreviousFilter);
 end;
 
 Function TRequestFilter.Match(ARequest:TDriverRequest; AChainStart:Boolean = True):TRequestFilter;
@@ -285,7 +423,7 @@ If (Assigned(FNextFilter)) Or (Assigned(FPreviousFilter)) Then
 end;
 
 
-Function TRequestFilter.SetAction(AAction:EFilterAction; AHighlightColor:Cardinal = 0; ANextFilter:TRequestFilter = Nil):Cardinal;
+Function TRequestFilter.SetAction(AAction:EFilterAction; AHighlightColor:Cardinal = $FFFFFF; ANextFilter:TRequestFilter = Nil):Cardinal;
 begin
 Result := 0;
 If FAction <> AAction Then
@@ -298,12 +436,10 @@ If FAction <> AAction Then
     end
   Else begin
     FAction := AAction;
-    If FAction = ffaHighlight Then
-      FHighlightColor := AHighlightColor;
+    FHighlightColor := AHighlightColor;
     end;
   end
-Else If (FAction = ffaHighlight) Then
-  FHighlightColor := AHighlightColor;
+Else FHighlightColor := AHighlightColor;
 end;
 
 Function TRequestFilter.SetCondition(AColumn:ERequestListModelColumnType; AOperator:ERequestFilterOperator; AValue:UInt64):Boolean;
@@ -429,6 +565,8 @@ Case RequestListModelColumnValueTypes[Ord(FField)] Of
     AddMapping(ASources, ATargets, Ord(ertDeviceDetected), 'DeviceDetected');
     AddMapping(ASources, ATargets, Ord(ertFileObjectNameAssigned), 'FONameAssigned');
     AddMapping(ASources, ATargets, Ord(ertFileObjectNameDeleted), 'FONameDeleted');
+    AddMapping(ASources, ATargets, Ord(ertProcessCreated), 'ProcessCreate');
+    AddMapping(ASources, ATargets, Ord(ertProcessExitted), 'ProcessExit');
     end;
   Else Result := False;
   end;
@@ -462,6 +600,7 @@ If Assigned(Result) Then
   Result.FColumnName := FColumnName;
   end;
 end;
+
 
 (** TIRPRequestFilter **)
 

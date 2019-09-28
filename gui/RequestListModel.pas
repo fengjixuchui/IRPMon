@@ -46,6 +46,7 @@ Type
     rlmctArg4,
     rlmctThreadId,
     rlmctProcessId,
+    rlmctProcessName,
     rlmctIRQL,
     rlmctPreviousMode,
     rlmctRequestorMode,
@@ -84,6 +85,7 @@ Const
     'Argument4',
     'Thread ID',
     'Process ID',
+    'Process name',
     'IRQL',
     'Previous mode',
     'Requestor mode',
@@ -119,6 +121,7 @@ Const
     rlmcvtInteger,
     rlmcvtInteger,
     rlmcvtInteger,
+    rlmcvtString,
     rlmcvtIRQL,
     rlmcvtProcessorMode,
     rlmcvtProcessorMode,
@@ -203,10 +206,13 @@ Type
 
   TRequestListModel = Class (TListModel<TDriverRequest>)
     Private
+      FFilterDisplayOnly : Boolean;
+      FAllRequests : TList<TDriverRequest>;
       FRequests : TList<TDriverRequest>;
       FDriverMap : TDictionary<Pointer, WideString>;
       FDeviceMap : TDictionary<Pointer, WideString>;
       FFileMap : TDictionary<Pointer, WideString>;
+      FProcessMap : TDictionary<Cardinal, WideString>;
       FParsers : TObjectList<TDataParser>;
       FOnRequestProcessed : TRequestListModelOnRequestProcessed;
     Protected
@@ -214,6 +220,7 @@ Type
       Function GetColumn(AItem:TDriverRequest; ATag:NativeUInt):WideString; Override;
       Procedure FreeItem(AItem:TDriverRequest); Override;
       Function _Item(AIndex:Integer):TDriverRequest; Override;
+      Procedure SetFilterDisplayOnly(AValue:Boolean);
     Public
       UpdateRequest : TList<PREQUEST_GENERAL>;
       Constructor Create; Reintroduce;
@@ -230,6 +237,7 @@ Type
       Procedure LoadFromFile(AFileName:WideString);
       Procedure Reevaluate;
 
+      Property FilterDisplayOnly : Boolean Read FFilterDisplayOnly Write SetFilterDisplayOnly;
       Property Parsers : TObjectList<TDataParser> Read FParsers Write FParsers;
       Property OnRequestProcessed : TRequestListModelOnRequestProcessed Read FOnRequestProcessed Write FOnRequestProcessed;
     end;
@@ -237,8 +245,10 @@ Type
 Implementation
 
 Uses
+  TlHelp32,
   SysUtils, NameTables, IRPRequest, FastIoRequest,
-  XXXDetectedRequests, FileObjectNameXXXRequest, Utils;
+  XXXDetectedRequests, FileObjectNameXXXRequest,
+  ProcessXXXRequests, Utils;
 
 (** TDriverRequestComparer **)
 
@@ -266,6 +276,8 @@ Case AType Of
   ertDeviceDetected : Result := TDeviceDetectedRequest.Create;
   ertFileObjectNameAssigned : Result := TFileObjectNameAssignedRequest.Create;
   ertFileObjectNameDeleted : Result := TFileObjectNameDeletedRequest.Create;
+  ertProcessCreated : Result := TProcessCreatedRequest.Create;
+  ertProcessExitted : Result := TProcessExittedRequest.Create;
   Else Result := TDriverRequest.Create;
   end;
 end;
@@ -396,6 +408,10 @@ Case AColumnType Of
     AValue := @FProcessId;
     AValueSIze := SizeOf(FProcessId);
     end;
+  rlmctProcessName : begin
+    AValue := PWideChar(FProcessName);
+    AValueSize := 0;
+    end;
   rlmctIRQL: begin
     AValue := @FIrql;
     AValueSIze := SizeOf(FIrql);
@@ -475,6 +491,7 @@ Case AColumnType Of
     end;
   rlmctProcessId : AResult := Format('%u', [FProcessId]);
   rlmctThreadId :  AResult := Format('%u', [FThreadId]);
+  rlmctProcessName : AResult := FProcessName;
   rlmctIRQL : AResult := IRQLToString(FIRQL);
   rlmctEmulated : AResult := BoolToStr(FEmulated, True);
   rlmctDataAssociated : AResult := BoolToStr(FDataPresent, True);
@@ -609,6 +626,22 @@ begin
 Result := FRequests[AIndex];
 end;
 
+Procedure TRequestListModel.SetFilterDisplayOnly(AValue:Boolean);
+Var
+  dr : TDriverRequest;
+begin
+If FFilterDisplayOnly <> AValue Then
+  begin
+  FFilterDisplayOnly := AValue;
+  FAllRequests.Clear;
+  If FFilterDisplayOnly Then
+    begin
+    For dr In FRequests Do
+      FAllRequests.Add(dr);
+    end;
+  end;
+end;
+
 Function TRequestListModel.RowCount : Cardinal;
 begin
 Result := FRequests.Count;
@@ -622,6 +655,7 @@ Var
   deviceName : WideString;
   driverName : WideString;
   fileName : WideString;
+  processName : WideString;
 begin
 Result := ERROR_SUCCESS;
 If Assigned(UpdateRequest) Then
@@ -660,7 +694,17 @@ If Assigned(UpdateRequest) Then
         dr := TFileObjectNameDeletedRequest.Create(ur.FileObjectNameDeleted);
         If FFileMap.ContainsKey(dr.FileObject) Then
           FFileMap.Remove(dr.FileObject);
-        end
+        end;
+      ertProcessCreated : begin
+        dr := TProcessCreatedRequest.Create(ur.ProcessCreated);
+        If FProcessMap.ContainsKey(Cardinal(dr.DriverObject)) Then
+          FProcessMap.Remove(Cardinal(dr.DriverObject));
+
+        FProcessMap.Add(Cardinal(dr.DriverObject), dr.DriverName);
+        end;
+      ertProcessExitted : begin
+        dr := TProcessExittedRequest.Create(ur.ProcessExitted);
+        end;
       Else dr := TDriverRequest.Create(ur.Header);
       end;
 
@@ -673,13 +717,20 @@ If Assigned(UpdateRequest) Then
     If FFileMap.TryGetValue(dr.FileObject, fileName) Then
       dr.SetFileName(fileName);
 
+    If FProcessMap.TryGetValue(dr.ProcessId, processName) Then
+      dr.SetProcessName(processName);
+
     keepRequest := True;
     If Assigned(FOnRequestProcessed) Then
       FOnRequestProcessed(dr, keepRequest);
 
+    If FFilterDisplayOnly Then
+      FAllRequests.Add(dr);
+
     If keepRequest Then
       FRequests.Add(dr)
-    Else dr.Free;
+    Else If Not FFilterDisplayOnly Then
+      dr.Free;
     end;
 
   UpdateRequest := Nil;
@@ -697,6 +748,8 @@ Var
   tmp : PPIRPMON_DRIVER_INFO;
   pdei : PPIRPMON_DEVICE_INFO;
   dei : PIRPMON_DEVICE_INFO;
+  hSnap : THandle;
+  pe : PROCESSENTRY32W;
 begin
 Result := IRPMonDllSnapshotRetrieve(pdri, count);
 If Result = ERROR_SUCCESS Then
@@ -721,6 +774,25 @@ If Result = ERROR_SUCCESS Then
 
   IRPMonDllSnapshotFree(pdri, count);
   end;
+
+If Result = 0 Then
+  begin
+  hSnap := CreateToolHelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+  If hSnap <> INVALID_HANDLE_VALUE Then
+    begin
+    pe.dwSize := SizeOf(pe);
+    If Process32FirstW(hSnap, pe) Then
+      begin
+      FProcessMap.Clear;
+      Repeat
+      FProcessMap.Add(pe.th32ProcessID, pe.szExeFile);
+      Until Not Process32NextW(hSnap, pe);
+      end;
+
+    CloseHandle(hSnap);
+    end
+  Else Result := GetLastError;
+  end;
 end;
 
 Procedure TRequestListModel.Clear;
@@ -732,6 +804,7 @@ For dr In FRequests Do
   dr.Free;
 
 FRequests.Clear;
+FAllRequests.Clear;
 end;
 
 
@@ -740,18 +813,22 @@ begin
 Inherited Create(Nil);
 UpdateRequest := Nil;
 FRequests := TList<TDriverRequest>.Create;
+FAllRequests := TList<TDriverRequest>.Create;
 FDriverMap := TDictionary<Pointer, WideString>.Create;
 FDeviceMap := TDictionary<Pointer, WideString>.Create;
 FFileMap := TDictionary<Pointer, WideString>.Create;
+FProcessMap := TDictionary<Cardinal, WideString>.Create;
 RefreshMaps;
 end;
 
 Destructor TRequestListModel.Destroy;
 begin
+FProcessMap.Free;
 FFileMap.Free;
 FDriverMap.Free;
 FDeviceMap.Free;
 Clear;
+FAllRequests.Free;
 FRequests.Free;
 Inherited Destroy;
 end;
@@ -822,8 +899,8 @@ begin
 c := TDriverRequestComparer.Create;
 FRequests.Sort(c);
 c.Free;
-If Assigned(FDisplayer) Then
-  FDisplayer.Invalidate;
+If Assigned(Displayer) Then
+  Displayer.Invalidate;
 end;
 
 Procedure TRequestListModel.OnAdvancedCustomDrawItemCallback(Sender: TCustomListView; Item: TListItem; State: TCustomDrawState; Stage: TCustomDrawStage; var DefaultDraw: Boolean);
@@ -842,9 +919,7 @@ With Sender.Canvas Do
   Else If dr.Highlight Then
     begin
     Brush.Color := dr.HighlightColor;
-    If (dr.HighlightColor >= $800000) Or
-       (dr.HighlightColor >= $008000) Or
-       (dr.HighlightColor >= $000080) Then
+    If Utils.ColorLuminanceHeur(dr.HighlightColor) >= 1490 Then
        Font.Color := ClBlack
     Else Font.Color := ClWhite;
     end;
@@ -857,29 +932,45 @@ Procedure TRequestListModel.Reevaluate;
 Var
   store : Boolean;
   I : Integer;
+  dr : TDriverRequest;
 begin
-I := 0;
-While (I < FRequests.Count) Do
+If Not FFilterDisplayOnly Then
   begin
-  If Assigned(FOnRequestProcessed) Then
+  I := 0;
+  While (I < FRequests.Count) Do
+    begin
+    If Assigned(FOnRequestProcessed) Then
+      begin
+      store := True;
+      FOnRequestProcessed(FRequests[I], store);
+      If Not store THen
+        begin
+        FRequests[I].Free;
+        FRequests.Delete(I);
+        Continue;
+        end;
+      end;
+
+    Inc(I);
+    end;
+  end
+Else begin
+  FRequests.Clear;
+  For dr In FAllRequests Do
     begin
     store := True;
-    FOnRequestProcessed(FRequests[I], store);
-    If Not store THen
-      begin
-      FRequests[I].Free;
-      FRequests.Delete(I);
-      Continue;
-      end;
-    end;
+    If Assigned(FOnRequestProcessed) Then
+      FOnRequestProcessed(dr, store);
 
-  Inc(I);
+    If store Then
+      FRequests.Add(dr);
+    end;
   end;
 
-If Assigned(FDisplayer) Then
+If Assigned(Displayer) Then
   begin
-  FDisplayer.Items.Count := FRequests.Count;
-  FDisplayer.Invalidate;
+  Displayer.Items.Count := FRequests.Count;
+  Displayer.Invalidate;
   end;
 end;
 

@@ -40,6 +40,9 @@ Type
     AddButton: TButton;
     DeleteButton: TButton;
     EnabledCheckBox: TCheckBox;
+    NextFilterComboBox: TComboBox;
+    UpButton: TButton;
+    DownButton: TButton;
     Procedure FormCreate(Sender: TObject);
     procedure FilterTypeComboBoxChange(Sender: TObject);
     procedure FilterColumnComboBoxChange(Sender: TObject);
@@ -57,11 +60,15 @@ Type
     procedure FilterListViewItemChecked(Sender: TObject; Item: TListItem);
     procedure FormDestroy(Sender: TObject);
     procedure FormClose(Sender: TObject; var Action: TCloseAction);
+    procedure UpDownButtonClick(Sender: TObject);
+    procedure FilterListViewSelectItem(Sender: TObject; Item: TListItem;
+      Selected: Boolean);
   Private
     FFilterList : TObjectList<TRequestFilter>;
     FCBs : Array [0..Ord(fctMax)-1] of TComboBox;
     FCancelled : Boolean;
     Procedure EnableCombobox(AType:EFilterComboboxType; AEnable:Boolean);
+    Procedure ShowNextFilters;
   Public
     Constructor Create(AOwner:TApplication; AFilterList:TObjectList<TRequestFilter>); Reintroduce;
 
@@ -75,6 +82,7 @@ Implementation
 {$R *.DFM}
 
 Uses
+  IniFiles,
   IRPMonDll, IRPRequest, FastIoRequest, Utils,
   FileObjectNameXxxRequest, XXXDetectedRequests;
 
@@ -89,6 +97,65 @@ For rf In AFilterList Do
 Inherited Create(Application);
 end;
 
+Procedure TFilterFrm.ShowNextFilters;
+Var
+  L : TListItem;
+  rf : TRequestFilter;
+  selectedIndex : Integer;
+  currentRF : TRequestFilter;
+  selectedRF : TRequestFilter;
+begin
+selectedIndex := -1;
+selectedRF := Nil;
+If NextFilterComboBox.ItemIndex <> -1 Then
+  selectedRF := NextFilterComboBox.Items.Objects[NextFilterComboBox.ItemIndex] As TRequestFilter;
+
+NextFilterComboBox.Clear;
+If NextFilterComboBox.Visible Then
+  begin
+  currentRF := Nil;
+  L := FilterListView.Selected;
+  If Assigned(L) Then
+    currentRF := FFilterList[L.Index];
+
+  For rf In FFilterList Do
+    begin
+    If (Assigned(currentRF)) And (rf.Name = currentRF.Name) Then
+      Continue;
+
+    If rf.HasPredecessor Then
+      Continue;
+
+    If (Assigned(selectedRF)) And (selectedRF.Name = rf.Name) Then
+      selectedIndex := NextFilterComboBox.Items.Count;
+
+    NextFilterComboBox.Items.AddObject(rf.Name, rf);
+    end;
+
+  NextFilterComboBox.ItemIndex := selectedIndex;
+  end;
+end;
+
+Procedure TFilterFrm.UpDownButtonClick(Sender: TObject);
+Var
+  L : TListItem;
+  index2 : Integer;
+begin
+L := FilterListView.Selected;
+If Assigned(L) Then
+  begin
+  If Sender = UpButton Then
+    index2 := L.Index - 1
+  Else If Sender = DownButton Then
+    index2 := L.Index + 1;
+
+  FFilterList.Exchange(L.Index, index2);
+  FilterListViewData(FilterListView, L);
+  FilterListViewData(FilterListView, FilterListView.Items[index2]);
+  FilterListView.Selected := FilterListView.Items[index2];
+  end;
+end;
+
 Procedure TFilterFrm.FilterActionComboBoxChange(Sender: TObject);
 Var
   fa : EFilterAction;
@@ -96,8 +163,9 @@ Var
 begin
 c := (Sender As TComboBox);
 fa := EFilterAction(c.ItemIndex);
-HighlightColorColorBox.Visible := (fa = ffaHighlight);
-HighlightColorColorBox.Enabled := (fa = ffaHighlight);
+NextFilterComboBox.Visible := (fa = ffaPassToFilter);
+NextFilterComboBox.Enabled := (fa = ffaPassToFilter);
+ShowNextFilters;
 end;
 
 Procedure TFilterFrm.FilterColumnComboBoxChange(Sender: TObject);
@@ -161,12 +229,13 @@ With FilterListView.Canvas Do
     Font.Color := clHighLightText;
     Font.Style := [fsBold];
     end
-  Else If f.Action = ffaHighlight Then
-    begin
+  Else begin
+    Font.Style := [];
+    If Not f.HasPredecessor Then
+      Font.Style := [fsBold];
+
     Brush.Color := f.HighlightColor;
-    If (f.HighlightColor >= $800000) Or
-       (f.HighlightColor >= $008000) Or
-       (f.HighlightColor >= $000080) Then
+    If ColorLuminanceHeur(f.HighlightColor) >= 1490 Then
        Font.Color := ClBlack
     Else Font.Color := ClWhite;
     end;
@@ -183,6 +252,7 @@ With Item  Do
   begin
   f := FFilterList[Index];
   Caption := f.Name;
+  SubItems.Clear;
   SubItems.Add(FilterTypeComboBox.Items[Ord(f.RequestType)]);
   SubItems.Add(f.ColumnName);
   SubItems.Add(RequestFilterOperatorNames[Ord(f.Op)]);
@@ -234,9 +304,7 @@ If Assigned(L) Then
 
   FilterActionComboBox.ItemIndex := Ord(f.Action);
   FilterActionComboBoxChange(FilterActionComboBox);
-  If f.Action = ffaHighlight Then
-    HighlightColorColorBox.Selected := f.HighlightColor;
-
+  HighlightColorColorBox.Selected := f.HighlightColor;
   NegateCheckBox.Checked := f.Negate;
   EnabledCheckBox.Checked := f.Enabled;
   end;
@@ -265,6 +333,14 @@ If f.Action = ffaPassToFilter Then
     FilterListView.Items[I].Checked := FFilterList[I].Enabled;
     end;
   end;
+end;
+
+Procedure TFilterFrm.FilterListViewSelectItem(Sender: TObject; Item: TListItem;
+  Selected: Boolean);
+begin
+DeleteButton.Enabled := (Assigned(Item)) And (Selected);
+UpButton.Enabled := ((Assigned(Item)) And (Selected) And (Item.Index > 0));
+DownButton.Enabled := ((Assigned(Item)) And (Selected) And (Item.Index < FilterListView.Items.Count - 1));
 end;
 
 Procedure TFilterFrm.FilterTypeComboBoxChange(Sender: TObject);
@@ -364,6 +440,7 @@ For rf In FFilterList Do
   L.Checked := rf.Enabled;
   end;
 
+FilterListViewSelectItem(FilterListView, Nil, False);
 end;
 
 Procedure TFilterFrm.FormDestroy(Sender: TObject);
@@ -372,10 +449,19 @@ FFilterList.Free;
 end;
 
 Procedure TFilterFrm.OkButtonClick(Sender: TObject);
+Var
+  iniFile : TIniFile;
+  fileName : WideString;
 begin
-FFilterList.OwnsObjects := False;
-FCancelled := False;
-Close;
+fileName := ExtractFilePath(Application.ExeName) + 'filters.ini';
+iniFile := TIniFIle.Create(fileName);
+FCancelled := Not TRequestFilter.SaveList(iniFile, FFilterList);
+iniFile.Free;
+If Not FCancelled Then
+  begin
+  FFilterList.OwnsObjects := False;
+  Close;
+  end;
 end;
 
 Procedure TFilterFrm.AddButtonClick(Sender: TObject);
@@ -390,8 +476,11 @@ Var
   fa : EFilterAction;
   hc : TColor;
   err : Cardinal;
+  passTarget : TRequestFilter;
+  newName : WideString;
 begin
 f := Nil;
+passTarget := Nil;
 Try
   If FilterTypeComboBox.ItemIndex = -1 Then
     begin
@@ -415,6 +504,17 @@ Try
   ct := ERequestListModelColumnType(FilterColumnComboBox.Items.Objects[FilterColumnComboBox.ItemIndex]);
   op := ERequestFilterOperator(FilterOperatorComboBox.Items.Objects[FilterOperatorComboBox.ItemIndex]);
   fa := EFilterAction(FilterActionComboBox.ItemIndex);
+  If (fa = ffaPassToFilter) Then
+    begin
+    If (NextFilterComboBox.ItemIndex = -1) Then
+      begin
+      ErrorMessage('Target of the pass-to-filter action not selected');
+      Exit;
+      end;
+
+    passTarget := NextFilterComboBox.Items.Objects[NextFilterComboBox.ItemIndex] As TRequestFilter;
+    end;
+
   hc := HighlightColorColorBox.Selected;
   v := FilterValueComboBox.Text;
   For I := 0 To FilterValueComboBox.Items.Count - 1 Do
@@ -426,11 +526,26 @@ Try
       end;
     end;
 
+  newName :=
+    FilterTypeComboBox.Text + '-' +
+    FilterColumnComboBox.Text + '-' +
+    FilterOperatorComboBox.Text + '-' +
+    FilterValueComboBox.Text + '-' +
+    FilterActionComboBox.Text;
+
+  f := TRequestFilter.GetByName(newName, FFilterList);
+  If Assigned(f) Then
+    begin
+    ErrorMessage('The filter is already present in the list');
+    f := Nil;
+    Exit;
+    end;
+
   f := TRequestFilter.NewInstance(rt);
   If Not Assigned(f) Then
     Exit;
 
-  f.Name := IntToStr(FilterListView.Items.Count + 1);
+  f.Name := newName;
   If Not f.SetCondition(ct, op, v) Then
     begin
     ErrorMessage('Unable to set filter condition, bad value of the constant');
@@ -438,7 +553,7 @@ Try
     end;
 
   f.Negate := NegateCheckBox.Checked;
-  err := f.SetAction(fa, hc);
+  err := f.SetAction(fa, hc, passTarget);
   If err <> 0 Then
     begin
     ErrorMessage(IntToStr(err));

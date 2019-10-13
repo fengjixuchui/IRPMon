@@ -41,6 +41,4 @@ PVOID StringRefTableGet(_In_ PSTRING_REF_TABLE Table, _In_ PUNICODE_STRING Strin
 
 
 
-
-
 #endif

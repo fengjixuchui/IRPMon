@@ -43,4 +43,6 @@ NTSTATUS HandleTableHandleClose(PCHANDLE_TABLE HandleTable, HANDLE Handle);
 NTSTATUS HandleTablehandleTranslate(PCHANDLE_TABLE HandleTable, HANDLE Handle, PVOID *Object);
 NTSTATUS HandleTableHandleDuplicate(PCHANDLE_TABLE HandleTable, HANDLE Handle, PHANDLE NewHandle);
 
+
+
 #endif 

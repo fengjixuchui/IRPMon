@@ -4,25 +4,59 @@
 #include <strsafe.h>
 #include "general-types.h"
 #include "parser-base.h"
-#include "keyboard-parser.h"
+#include "mouse-parser.h"
 
 
 
 #define IRP_MJ_READ					0x03
 
-#define KEY_MAKE					0x0
-#define KEY_BREAK					0x1
-#define KEY_E0						0x2
-#define KEY_E1						0x4
 
-
-typedef struct _KEYBOARD_INPUT_DATA {
+typedef struct _MOUSE_INPUT_DATA {
 	USHORT UnitId;
-	USHORT MakeCode;
 	USHORT Flags;
-	USHORT Reserved;
-	ULONG  ExtraInformation;
-} KEYBOARD_INPUT_DATA, *PKEYBOARD_INPUT_DATA;
+	union {
+		ULONG Buttons;
+		struct {
+			USHORT  ButtonFlags;
+			USHORT  ButtonData;
+		};
+	};
+	ULONG RawButtons;
+	LONG LastX;
+	LONG LastY;
+	ULONG ExtraInformation;
+} MOUSE_INPUT_DATA, *PMOUSE_INPUT_DATA;
+
+
+#define MOUSE_LEFT_BUTTON_DOWN   0x0001  // Left Button changed to down.
+#define MOUSE_LEFT_BUTTON_UP     0x0002  // Left Button changed to up.
+#define MOUSE_RIGHT_BUTTON_DOWN  0x0004  // Right Button changed to down.
+#define MOUSE_RIGHT_BUTTON_UP    0x0008  // Right Button changed to up.
+#define MOUSE_MIDDLE_BUTTON_DOWN 0x0010  // Middle Button changed to down.
+#define MOUSE_MIDDLE_BUTTON_UP   0x0020  // Middle Button changed to up.
+
+#define MOUSE_BUTTON_1_DOWN     MOUSE_LEFT_BUTTON_DOWN
+#define MOUSE_BUTTON_1_UP       MOUSE_LEFT_BUTTON_UP
+#define MOUSE_BUTTON_2_DOWN     MOUSE_RIGHT_BUTTON_DOWN
+#define MOUSE_BUTTON_2_UP       MOUSE_RIGHT_BUTTON_UP
+#define MOUSE_BUTTON_3_DOWN     MOUSE_MIDDLE_BUTTON_DOWN
+#define MOUSE_BUTTON_3_UP       MOUSE_MIDDLE_BUTTON_UP
+
+#define MOUSE_BUTTON_4_DOWN     0x0040
+#define MOUSE_BUTTON_4_UP       0x0080
+#define MOUSE_BUTTON_5_DOWN     0x0100
+#define MOUSE_BUTTON_5_UP       0x0200
+
+#define MOUSE_WHEEL             0x0400
+#define MOUSE_HWHEEL		0x0800
+
+#define MOUSE_MOVE_RELATIVE         0
+#define MOUSE_MOVE_ABSOLUTE         1
+#define MOUSE_VIRTUAL_DESKTOP    0x02  // the coordinates are mapped to the virtual desktop
+#define MOUSE_ATTRIBUTES_CHANGED 0x04  // requery for mouse attributes
+#define MOUSE_MOVE_NOCOALESCE    0x08  // do not coalesce WM_MOUSEMOVEs
+#define MOUSE_TERMSRV_SRC_SHADOW        0x100
+
 
 
 
@@ -33,11 +67,11 @@ static BOOLEAN _hideZeroValues = TRUE;
 static DWORD cdecl _ParseRoutine(const REQUEST_HEADER *Request, const DP_REQUEST_EXTRA_INFO *ExtraInfo, PBOOLEAN Handled, wchar_t ***Names, wchar_t ***Values, size_t *RowCount)
 {
 	NV_PAIR p;
-	const wchar_t *driverName = L"\\Driver\\kbdclass";
-	const wchar_t *deviceName = L"\\Device\\KeyboardClass0";
+	const wchar_t *driverName = L"\\Driver\\mouclass";
+	const wchar_t *deviceName = L"\\Device\\PointerdClass0";
 	DWORD ret = ERROR_GEN_FAILURE;
 	const REQUEST_IRP_COMPLETION *irpComp = NULL;
-	const KEYBOARD_INPUT_DATA *kbdInput = NULL;
+	const MOUSE_INPUT_DATA *kbdInput = NULL;
 	size_t inputCount = 0;
 
 	ret = ERROR_SUCCESS;
@@ -48,8 +82,8 @@ static DWORD cdecl _ParseRoutine(const REQUEST_HEADER *Request, const DP_REQUEST
 			ExtraInfo->DriverName != NULL && _wcsicmp(ExtraInfo->DriverName, driverName) == 0 &&
 			ExtraInfo->DeviceName != NULL && wcslen(ExtraInfo->DeviceName) > wcslen(deviceName) &&
 			memcmp(ExtraInfo->DeviceName, deviceName, wcslen(deviceName) * sizeof(wchar_t)) == 0) {
-			kbdInput = (KEYBOARD_INPUT_DATA *)(irpComp + 1);
-			inputCount = irpComp->DataSize / sizeof(KEYBOARD_INPUT_DATA);
+			kbdInput = (MOUSE_INPUT_DATA *)(irpComp + 1);
+			inputCount = irpComp->DataSize / sizeof(MOUSE_INPUT_DATA);
 		}
 	}
 
@@ -60,29 +94,8 @@ static DWORD cdecl _ParseRoutine(const REQUEST_HEADER *Request, const DP_REQUEST
 			if (ret == ERROR_SUCCESS)
 				ret = PBaseAddNameFormat(&p, L"  Device", L"%u", kbdInput->UnitId);
 
-			if (ret == ERROR_SUCCESS)
-				ret = PBaseAddNameFormat(&p, L"  Scan code", L"%u", kbdInput->MakeCode);
-
 			if (ret == ERROR_SUCCESS && (!_hideZeroValues || kbdInput->Flags))
 				ret = PBaseAddNameFormat(&p, L"  Flags", L"0x%x", kbdInput->Flags);
-
-			if (ret == ERROR_SUCCESS)
-				ret = PBaseAddBooleanValue(&p, L"  Pressed", (kbdInput->Flags & KEY_MAKE) != 0, _hideZeroValues);
-
-			if (ret == ERROR_SUCCESS)
-				ret = PBaseAddBooleanValue(&p, L"  Release", (kbdInput->Flags & KEY_BREAK) != 0, _hideZeroValues);
-
-			if (ret == ERROR_SUCCESS)
-				ret = PBaseAddBooleanValue(&p, L"  Extended #0", (kbdInput->Flags & KEY_E0) != 0, _hideZeroValues);
-
-			if (ret == ERROR_SUCCESS)
-				ret = PBaseAddBooleanValue(&p, L"  Extended #1", (kbdInput->Flags & KEY_E1) != 0, _hideZeroValues);
-
-			if (ret == ERROR_SUCCESS && (!_hideZeroValues || kbdInput->ExtraInformation != 0))
-				ret = PBaseAddNameFormat(&p, L"  Extra", L"0x%x (%u)", kbdInput->ExtraInformation, kbdInput->ExtraInformation);
-
-			if (ret == ERROR_SUCCESS && (!_hideZeroValues || kbdInput->Reserved != 0))
-				ret = PBaseAddNameFormat(&p, L"  Reserved", L"0x%x (%u)", kbdInput->Reserved, kbdInput->Reserved);
 
 			if (ret != ERROR_SUCCESS)
 				break;
@@ -103,7 +116,8 @@ static DWORD cdecl _ParseRoutine(const REQUEST_HEADER *Request, const DP_REQUEST
 
 			HeapFree(GetProcessHeap(), 0, p.Names);
 		}
-	} else {
+	}
+	else {
 		*Names = NULL;
 		*Values = NULL;
 		*RowCount = 0;
@@ -128,7 +142,7 @@ DWORD cdecl DP_INIT_ROUTINE_NAME(PIRPMON_DATA_PARSER Parser)
 	Parser->MajorVersion = 1;
 	Parser->MinorVersion = 0;
 	Parser->BuildVersion = 0;
-	Parser->Name = L"KbdClass";
+	Parser->Name = L"MouClass";
 	Parser->Priority = 1;
 	Parser->ParseRoutine = _ParseRoutine;
 	Parser->FreeRoutine = _FreeRoutine;

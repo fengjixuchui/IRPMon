@@ -4,3 +4,6 @@ EXPORTS
 	PBaseAddNameFormat
 	PBaseAddBooleanValue
 	PBaseFreeNameValue
+	PBaseAddFlags
+	PBaseDataParserAlloc
+	PBaseDataParserFree

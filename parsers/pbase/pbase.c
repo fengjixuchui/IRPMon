@@ -3,6 +3,7 @@
 #include <windows.h>
 #include <strsafe.h>
 #include "general-types.h"
+#include "data-parser-types.h"
 #include "parser-base.h"
 
 
@@ -87,12 +88,64 @@ DWORD PBaseAddBooleanValue(PNV_PAIR Pair, const wchar_t *Name, BOOLEAN Value, BO
 }
 
 
+DWORD PBaseAddFlags(PNV_PAIR Pair, uint32_t Flags, const uint32_t *FlagBits, const wchar_t **FlagNames, size_t FlagCount, BOOLEAN HideZeroValues)
+{
+	DWORD ret = ERROR_SUCCESS;
+
+	for (size_t i = 0; i < FlagCount; ++i) {
+		ret = PBaseAddBooleanValue(Pair, FlagNames[i], (Flags & FlagBits[i]), HideZeroValues);
+		if (ret != ERROR_SUCCESS)
+			break;
+	}
+
+	return ret;
+}
+
+
 void PBaseFreeNameValue(wchar_t **Names, wchar_t **Values, size_t Count)
 {
 	for (size_t i = 0; i < Count; ++i)
 		HeapFree(GetProcessHeap(), 0, Names[i]);
 
 	HeapFree(GetProcessHeap(), 0, Names);
+
+	return;
+}
+
+
+
+DWORD PBaseDataParserAlloc(uint32_t Version, PIRPMON_DATA_PARSER *Parser)
+{
+	uint32_t parserSize = 0;
+	DWORD ret = ERROR_GEN_FAILURE;
+	PIRPMON_DATA_PARSER tmpParser = NULL;
+
+	switch (Version) {
+		case IRPMON_DATA_PARSER_VERSION_1:
+			parserSize = sizeof(IRPMON_DATA_PARSER_V1);
+			ret = ERROR_SUCCESS;
+			break;
+		default:
+			ret = ERROR_INVALID_PARAMETER;
+			break;
+	}
+
+	if (ret == ERROR_SUCCESS) {
+		tmpParser = HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, parserSize);
+		if (tmpParser != NULL) {
+			tmpParser->Version = Version;
+			tmpParser->Size = parserSize;
+			*Parser = tmpParser;
+		} else ret = GetLastError();
+	}
+
+	return ret;
+}
+
+
+void PBaseDataParserFree(PIRPMON_DATA_PARSER Parser)
+{
+	HeapFree(GetProcessHeap(), 0, Parser);
 
 	return;
 }

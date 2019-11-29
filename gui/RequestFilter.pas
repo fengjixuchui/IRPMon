@@ -134,7 +134,7 @@ Implementation
 
 Uses
   Classes, SysUtils, IRPRequest, FastIoRequest, FileObjectNameXXXRequest,
-  XXXDetectedRequests;
+  XXXDetectedRequests, ProcessXXXRequests;
 
 (** TRequestFilter **)
 
@@ -160,6 +160,8 @@ Case FRequestType Of
   ertDeviceDetected: FRequestPrototype := TDeviceDetectedRequest.Create;
   ertFileObjectNameAssigned: FRequestPrototype := TFileObjectNameAssignedRequest.Create;
   ertFileObjectNameDeleted: FRequestPrototype := TFileObjectNameDeletedRequest.Create;
+  ertProcessCreated : FRequestPrototype := TProcessCreatedRequest.Create;
+  ertProcessExitted : FRequestPrototype := TProcessExittedRequest.Create;
   end;
 end;
 
@@ -356,7 +358,7 @@ If (FEnabled) And
       end;
 
     If FNegate Then
-      ret := Not FNegate;
+      ret := Not ret;
 
     If ret Then
       begin

@@ -88,12 +88,34 @@ Uses
 
 Constructor TFilterFrm.Create(AOwner:TApplication; AFilterList:TObjectList<TRequestFilter>);
 Var
+  I : Integer;
+  n : WideString;
+  names : TStringList;
   rf : TRequestFilter;
+  tmp : TRequestFilter;
 begin
+names := TStringList.Create;
 FFilterList := TObjectList<TRequestFilter>.Create;
 For rf In AFilterList Do
+  begin
+  n := '';
   FFilterList.Add(rf.Copy);
+  If Assigned(rf.NextFilter) Then
+    n := rf.NextFilter.Name;
 
+  names.Add(n);
+  end;
+
+For I := 0 To names.Count - 1 Do
+  begin
+  n := names[I];
+  rf := FFilterList[I];
+  tmp := TRequestFilter.GetByName(n, FFilterList);
+  If Assigned(tmp) Then
+    rf.AddNext(tmp);
+  end;
+
+names.Free;
 Inherited Create(Application);
 end;
 
@@ -247,6 +269,7 @@ end;
 Procedure TFilterFrm.FilterListViewData(Sender: TObject; Item: TListItem);
 Var
   f : TRequestFilter;
+  nextFilterName : WideString;
 begin
 With Item  Do
   begin
@@ -262,6 +285,11 @@ With Item  Do
 
   SubItems.Add(f.StringValue);
   SubItems.Add(FilterActionComboBox.Items[Ord(f.Action)]);
+  nextFilterName := '<not applicable>';
+  If Assigned(f.NextFilter) Then
+    nextFilterName := f.NextFilter.Name;
+
+  SubItems.Add(nextFilterName);
   Checked := f.Enabled;
   end;
 end;
@@ -553,11 +581,21 @@ Try
     end;
 
   f.Negate := NegateCheckBox.Checked;
-  err := f.SetAction(fa, hc, passTarget);
+  err := f.SetAction(fa, hc);
   If err <> 0 Then
     begin
     ErrorMessage(IntToStr(err));
     Exit;
+    end;
+
+  If fa = ffaPassToFilter Then
+    begin
+    err := f.AddNext(passTarget);
+    If err <> 0 Then
+      begin
+      ErrorMessage(IntToStr(err));
+      Exit;
+      end;
     end;
 
   FFilterList.Add(f);

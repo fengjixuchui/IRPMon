@@ -3,7 +3,7 @@ object FilterFrm: TFilterFrm
   Top = 0
   Caption = 'Filters'
   ClientHeight = 331
-  ClientWidth = 549
+  ClientWidth = 648
   Color = clBtnFace
   Font.Charset = DEFAULT_CHARSET
   Font.Color = clWindowText
@@ -19,7 +19,7 @@ object FilterFrm: TFilterFrm
   object UpperPanel: TPanel
     Left = 0
     Top = 0
-    Width = 549
+    Width = 648
     Height = 111
     Align = alTop
     TabOrder = 0
@@ -181,7 +181,7 @@ object FilterFrm: TFilterFrm
   object LowerPanel: TPanel
     Left = 0
     Top = 282
-    Width = 549
+    Width = 648
     Height = 49
     Align = alBottom
     TabOrder = 1
@@ -207,7 +207,7 @@ object FilterFrm: TFilterFrm
   object FilterListView: TListView
     Left = 0
     Top = 111
-    Width = 549
+    Width = 648
     Height = 171
     Align = alClient
     Checkboxes = True
@@ -238,6 +238,10 @@ object FilterFrm: TFilterFrm
       item
         Caption = 'Action'
         Width = 75
+      end
+      item
+        AutoSize = True
+        Caption = 'Next'
       end>
     DoubleBuffered = True
     HideSelection = False

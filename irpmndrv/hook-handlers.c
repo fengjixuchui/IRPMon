@@ -10,6 +10,7 @@
 #include "req-queue.h"
 #include "data-loggers.h"
 #include "fo-context-table.h"
+#include "request.h"
 #include "hook-handlers.h"
 
 
@@ -29,29 +30,13 @@ static FO_CONTEXT_TABLE _foTable;
 /************************************************************************/
 
 
-static void _SetRequestFlags(PREQUEST_HEADER Request, const BASIC_CLIENT_INFO *Info)
-{
-	DEBUG_ENTER_FUNCTION("Request=0x%p; Info=0x%p", Request, Info);
-
-	if (Info->Admin)
-		Request->Flags |= REQUEST_FLAG_ADMIN;
-
-	if (Info->Impersonated)
-		Request->Flags |= REQUEST_FLAG_IMPERSONATED;
-
-	if (Info->ImpersonatedAdmin)
-		Request->Flags |= REQUEST_FLAG_IMPERSONATED_ADMIN;
-
-	DEBUG_EXIT_FUNCTION_VOID();
-	return;
-}
-
-
 static PREQUEST_FASTIO _CreateFastIoRequest(EFastIoOperationType FastIoType, PDRIVER_OBJECT DriverObject, PDEVICE_OBJECT DeviceObject, PVOID FileObject, PVOID Arg1, PVOID Arg2, PVOID Arg3, PVOID Arg4, PVOID Arg5, PVOID Arg6, PVOID Arg7)
 {
 	PREQUEST_FASTIO ret = NULL;
+	BASIC_CLIENT_INFO clientInfo;
+	PFILE_OBJECT_CONTEXT foc = NULL;
 
-	ret = (PREQUEST_FASTIO)HeapMemoryAllocNonPaged(sizeof(REQUEST_FASTIO));
+	ret = HeapMemoryAllocNonPaged(sizeof(REQUEST_FASTIO));
 	if (ret != NULL) {
 		RequestHeaderInit(&ret->Header, DriverObject, DeviceObject, ertFastIo);
 		ret->FastIoType = FastIoType;
@@ -66,6 +51,12 @@ static PREQUEST_FASTIO _CreateFastIoRequest(EFastIoOperationType FastIoType, PDR
 		ret->Arg7 = Arg7;
 		ret->IOSBInformation = 0;
 		ret->IOSBStatus = STATUS_UNSUCCESSFUL;
+		foc = FoTableGet(&_foTable, FileObject);
+		if (foc != NULL) {
+			clientInfo = *(PBASIC_CLIENT_INFO)(foc + 1);
+			_SetRequestFlags(&ret->Header, &clientInfo);
+			FoContextDereference(foc);
+		}
 	}
 
 	return ret;
@@ -1338,33 +1329,24 @@ NTSTATUS HookHandlerIRPDisptach(PDEVICE_OBJECT Deviceobject, PIRP Irp)
 		}
 		
 		isCleanup = (irpStack->MajorFunction == IRP_MJ_CLEANUP);
-		if (isCleanup && KeGetCurrentIrql() < DISPATCH_LEVEL) {
+		if (isCleanup) {
 			cleanupFileObject = irpStack->FileObject;
-			if (cleanupFileObject != NULL) {
-				PBASIC_CLIENT_INFO ci = NULL;
-				PFILE_OBJECT_CONTEXT foc = NULL;
-				PREQUEST_FILE_OBJECT_NAME_DELETED dr = NULL;
+			if (cleanupFileObject != NULL) {				
+				if (KeGetCurrentIrql() < DISPATCH_LEVEL) {
+					PREQUEST_FILE_OBJECT_NAME_DELETED dr = NULL;
 
-				dr = HeapMemoryAllocNonPaged(sizeof(REQUEST_FILE_OBJECT_NAME_DELETED));
-				if (dr != NULL) {
-					memset(dr, 0, sizeof(REQUEST_FILE_OBJECT_NAME_DELETED));
-					RequestHeaderInit(&dr->Header, Deviceobject->DriverObject, Deviceobject, ertFileObjectNameDeleted);
-					RequestHeaderSetResult(dr->Header, NTSTATUS, STATUS_SUCCESS);
-					dr->FileObject = cleanupFileObject;
-					RequestQueueInsert(&dr->Header);
-				}
-
-				foc = FoTableDelete(&_foTable, cleanupFileObject);
-				if (foc != NULL) {
-					ci = (PBASIC_CLIENT_INFO)(foc + 1);
-					if (request != NULL) {
-						_SetRequestFlags(&request->Header, ci);
-						if (compContext != NULL)
-							compContext->ClientInfo = *ci;
+					dr = HeapMemoryAllocNonPaged(sizeof(REQUEST_FILE_OBJECT_NAME_DELETED));
+					if (dr != NULL) {
+						memset(dr, 0, sizeof(REQUEST_FILE_OBJECT_NAME_DELETED));
+						RequestHeaderInit(&dr->Header, Deviceobject->DriverObject, Deviceobject, ertFileObjectNameDeleted);
+						RequestHeaderSetResult(dr->Header, NTSTATUS, STATUS_SUCCESS);
+						dr->FileObject = cleanupFileObject;
+						_SetRequestFlags(&dr->Header, &clientInfo);
+						RequestQueueInsert(&dr->Header);
 					}
-
-					FoContextDereference(foc);
 				}
+
+				FoTableDeleteNoReturn(&_foTable, cleanupFileObject);
 			}
 		}
 
@@ -1396,6 +1378,7 @@ NTSTATUS HookHandlerIRPDisptach(PDEVICE_OBJECT Deviceobject, PIRP Irp)
 						ar->FileObject = createFileObject;
 						ar->NameLength = uFileName.Length;
 						memcpy(ar + 1, uFileName.Buffer, uFileName.Length);
+						_SetRequestFlags(&ar->Header, &clientInfo);
 						RequestQueueInsert(&ar->Header);
 					} else tmpStatus = STATUS_INSUFFICIENT_RESOURCES;
 				}

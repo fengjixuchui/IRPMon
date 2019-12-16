@@ -15,7 +15,6 @@ Type
   Private
     FConnected : Boolean;
     FEvent : THandle;
-    FSemaphore : THandle;
     FMsgCode : Cardinal;
     FCurrentList : TList<PREQUEST_GENERAL>;
     Procedure PortablePostMessage;
@@ -61,7 +60,11 @@ If Assigned(rq) Then
   begin
   Result := IRPMonDllGetRequest(@rq.Header, SizeOf(REQUEST_GENERAL) + 2048);
   If Result = ERROR_SUCCESS Then
+    begin
     AList.Add(rq);
+    If ((rq.Header.Flags And REQUEST_FLAG_NEXT_AVAILABLE) = 0) Then
+      Break;
+    end;
 
   If Result <> ERROR_SUCCESS Then
     begin
@@ -72,49 +75,17 @@ If Assigned(rq) Then
   end
 Else Result := ERROR_NOT_ENOUGH_MEMORY;
 
-Until Result <> ERROR_INSUFFICIENT_BUFFER;
+Until (Result <> ERROR_SUCCESS) And (Result <> ERROR_INSUFFICIENT_BUFFER);
 end;
 
 Procedure TRequestThread.Execute;
 Var
-  err : Cardinal;
-  otw : Packed Array [0..1] Of THandle;
+  waitRes : Cardinal;
   l : TList<PREQUEST_GENERAL>;
 begin
 FreeOnTerminate := False;
 l := TList<PREQUEST_GENERAL>.Create;
-otw[0] := FEvent;
-otw[1] := FSemaphore;
 While Not Terminated  Do
-  begin
-  err := WaitForMultipleObjects(2, @otw, False, 100);
-  Case err Of
-    WAIT_OBJECT_0 : Terminate;
-    WAIT_OBJECT_0 + 1 : begin
-      ProcessRequest(l);
-      If l.Count > 20 Then
-        begin
-        FCurrentList := l;
-        PostRequestList;
-        l := TList<PREQUEST_GENERAL>.Create;
-        end;
-      end;
-    WAIT_TIMEOUT: begin
-      If l.Count > 0 Then
-        begin
-        FCurrentList := l;
-        PostRequestList;
-        l := TList<PREQUEST_GENERAL>.Create;
-        end;
-      end;
-    end;
-  end;
-
-FConnected := False;
-IRPMonDllDisconnect;
-Repeat
-err := WaitForSingleObject(FSemaphore, 400);
-If err = WAIT_OBJECT_0 Then
   begin
   ProcessRequest(l);
   If l.Count > 20 Then
@@ -123,9 +94,23 @@ If err = WAIT_OBJECT_0 Then
     PostRequestList;
     l := TList<PREQUEST_GENERAL>.Create;
     end;
-  end;
-Until err <> WAIT_OBJECT_0;
 
+  waitRes := WaitForSingleObject(FEvent, 1000);
+  Case waitRes Of
+    WAIT_TIMEOUT: begin
+      If l.Count > 0 Then
+        begin
+        FCurrentList := l;
+        PostRequestList;
+        l := TList<PREQUEST_GENERAL>.Create;
+        end;
+      end;
+    WAIT_OBJECT_0: Break;
+    end;
+  end;
+
+FConnected := False;
+IRPMonDllDisconnect;
 l.Free;
 end;
 
@@ -144,17 +129,12 @@ begin
 Inherited Create(True);
 FConnected := False;
 FEvent := 0;
-FSemaphore := 0;
 FMsgCode := AMsgCode;
-FSemaphore := CreateSemaphore(Nil, 0, $7FFFFFFF, Nil);
-If FSemaphore = 0 Then
-  Raise Exception.Create(Format('CreateSemaphore: %u', [GetLastError]));
-
 FEvent := CreateEvent(Nil, False, False, Nil);
 If FEvent = 0 Then
   Raise Exception.Create(Format('CreateEvent: %u', [GetLastError]));
 
-err := IRPMonDllConnect(FSemaphore);
+err := IRPMonDllConnect;
 If err <> ERROR_SUCCESS Then
   Raise Exception.Create(Format('IRPMonDllConnect: %u', [err]));
 
@@ -169,10 +149,7 @@ If FConnected Then
   IRPMonDllDisconnect;
 
 If FEvent <> 0 Then
-  FileClose(FEvent);{ *Převedeno z CloseHandle* }
-
-If FSemaphore <> 0 Then
-  FileClose(FSemaphore);{ *Převedeno z CloseHandle* }
+  CloseHandle(FEvent);
 
 Inherited Destroy;
 end;

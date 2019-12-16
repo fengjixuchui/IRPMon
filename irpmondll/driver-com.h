@@ -5,6 +5,7 @@
 #include <windows.h>
 #include "general-types.h"
 #include "kernel-shared.h"
+#include "irpmondll-types.h"
 
 
 DWORD DriverComHookDriver(PWCHAR DriverName, PDRIVER_MONITOR_SETTINGS MonitorSettings, PHANDLE HookHandle, PVOID *ObjectId);
@@ -13,7 +14,7 @@ DWORD DriverComHookedDriverGetInfo(HANDLE Driverhandle, PDRIVER_MONITOR_SETTINGS
 DWORD DriverComHookedDriverActivate(HANDLE DriverHandle, BOOLEAN Activate);
 DWORD DriverComUnhookDriver(HANDLE HookHandle);
 
-DWORD DriverComConnect(HANDLE hSemaphore);
+DWORD DriverComConnect(void);
 DWORD DriverComDisconnect(VOID);
 DWORD DriverComGetRequest(PREQUEST_HEADER Request, DWORD Size);
 
@@ -44,9 +45,17 @@ DWORD DriverComDriverNameWatchUnregister(PWCHAR DriverName);
 DWORD DriverComDriverNameWatchEnum(PDRIVER_NAME_WATCH_RECORD *Array, PULONG Count);
 VOID DriverComDriverNameWatchEnumFree(PDRIVER_NAME_WATCH_RECORD Array, ULONG Count);
 
-BOOL DriverComDeviceConnected(VOID);
-DWORD DriverComModuleInit(VOID);
+DWORD _SynchronousNoIOIOCTL(DWORD Code);
+DWORD _SynchronousWriteIOCTL(DWORD Code, PVOID InputBuffer, ULONG InputBufferLength);
+DWORD _SynchronousReadIOCTL(DWORD Code, PVOID OutputBuffer, ULONG OutputBufferLength);
+DWORD _SynchronousOtherIOCTL(DWORD Code, PVOID InputBuffer, ULONG InputBufferLength, PVOID OutputBuffer, ULONG OutputBufferLength);
+DWORD _SynchronousVariableOutputIOCTL(ULONG Code, PVOID InputBuffer, ULONG InputBufferLength, ULONG InitialSize, PVOID *OutputBuffer, PULONG OutputBufferLength);
+
+DWORD DriverComModuleInit(const IRPMON_INIT_INFO *Info);
 VOID DriverComModuleFinit(VOID);
+BOOL DriverComDeviceConnected(VOID);
+
+
 
 
 #endif 

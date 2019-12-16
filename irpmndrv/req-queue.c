@@ -4,6 +4,7 @@
 #include "allocator.h"
 #include "utils.h"
 #include "request.h"
+#include "process-events.h"
 #include "req-queue.h"
 
 
@@ -11,7 +12,6 @@
 /*                            GLOBAL VARIABLES                          */
 /************************************************************************/
 
-static PKSEMAPHORE _requestListSemaphore = NULL;
 static KSPIN_LOCK _requestListLock;
 static volatile LONG _requestCount = 0;
 static LIST_ENTRY _requestListHead;
@@ -48,10 +48,13 @@ static VOID _RequestQueueClear(VOID)
 /************************************************************************/
 
 
-NTSTATUS RequestQueueConnect(HANDLE hSemaphore)
+NTSTATUS RequestQueueConnect()
 {
+	PREQUEST_HEADER old = NULL;
+	PREQUEST_HEADER psRequest = NULL;
+	LIST_ENTRY psRequests;
 	NTSTATUS status = STATUS_UNSUCCESSFUL;
-	DEBUG_ENTER_FUNCTION("hSemaphore=0x%p", hSemaphore);
+	DEBUG_ENTER_FUNCTION_NO_ARGS();
 	DEBUG_IRQL_LESS_OR_EQUAL(PASSIVE_LEVEL);
 
 	KeEnterCriticalRegion();
@@ -60,17 +63,23 @@ NTSTATUS RequestQueueConnect(HANDLE hSemaphore)
 		IoInitializeRemoveLock(&_removeLock, 0, 0, 0x7fffffff);
 		status = IoAcquireRemoveLock(&_removeLock, NULL);
 		if (NT_SUCCESS(status)) {
-			if (hSemaphore != NULL)
-				status = ObReferenceObjectByHandle(hSemaphore, SEMAPHORE_ALL_ACCESS, *ExSemaphoreObjectType, ExGetPreviousMode(), &_requestListSemaphore, NULL);
-			
+			InitializeListHead(&psRequests);
+			status = ListProcessesByEvents(&psRequests);
 			if (NT_SUCCESS(status)) {
+				psRequest = CONTAINING_RECORD(psRequests.Blink, REQUEST_HEADER, Entry);
+				while (&psRequest->Entry != &psRequests) {
+					old = psRequest;
+					psRequest = CONTAINING_RECORD(psRequest->Entry.Blink, REQUEST_HEADER, Entry);
+					RemoveEntryList(&old->Entry);
+					ExInterlockedInsertHeadList(&_requestListHead, &old->Entry, &_requestListLock);
+					InterlockedIncrement(&_requestCount);
+				}
+
 				_connected = TRUE;
-				if (_requestListSemaphore != NULL)
-					KeReleaseSemaphore(_requestListSemaphore, IO_NO_INCREMENT, _requestCount, FALSE);
 			}
 
 			if (!NT_SUCCESS(status))
-				_requestListSemaphore = NULL;
+				IoReleaseRemoveLock(&_removeLock, NULL);
 		}
 	} else status = STATUS_ALREADY_REGISTERED;
 
@@ -91,11 +100,6 @@ VOID RequestQueueDisconnect(VOID)
 	ExAcquireResourceExclusiveLite(&_connectLock, TRUE);
 	if (_connected) {		
 		IoReleaseRemoveLockAndWait(&_removeLock, NULL);
-		if (_requestListSemaphore != NULL) {
-			ObDereferenceObject(_requestListSemaphore);
-			_requestListSemaphore = NULL;
-		}
-
 		_connected = FALSE;
 	}
 
@@ -118,9 +122,6 @@ VOID RequestQueueInsert(PREQUEST_HEADER Header)
 		if (NT_SUCCESS(status)) {
 			ExInterlockedInsertTailList(&_requestListHead, &Header->Entry, &_requestListLock);
 			InterlockedIncrement(&_requestCount);
-			if (_requestListSemaphore != NULL)
-				KeReleaseSemaphore(_requestListSemaphore, IO_NO_INCREMENT, 1, FALSE);
-			
 			IoReleaseRemoveLock(&_removeLock, NULL);
 		}
 	} else status = STATUS_CONNECTION_DISCONNECTED;
@@ -237,6 +238,9 @@ NTSTATUS RequestQueueGet(PREQUEST_HEADER *Buffer, PSIZE_T Length)
 				reqSize = RequestGetSize(h);
 				if (reqSize <= *Length) {
 					InterlockedDecrement(&_requestCount);
+					if (!IsListEmpty(&_requestListHead))
+						h->Flags |= REQUEST_FLAG_NEXT_AVAILABLE;
+
 					*Buffer = h;
 					status = STATUS_SUCCESS;
 				} else {

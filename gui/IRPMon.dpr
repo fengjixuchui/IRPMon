@@ -4,7 +4,7 @@ program IRPMon;
   {$MODE Delphi}
 {$ENDIF}
 
-{$R 'uac.res' 'uac.rc'}
+
 
 uses
   WinSvc,
@@ -36,7 +36,8 @@ uses
   DataParsers in 'DataParsers.pas',
   FileObjectNameXXXRequest in 'FileObjectNameXXXRequest.pas',
   FillterForm in 'FillterForm.pas' {FilterFrm},
-  ProcessXXXRequests in 'ProcessXXXRequests.pas';
+  ProcessXXXRequests in 'ProcessXXXRequests.pas',
+  ConnectorSelectionForm in 'ConnectorSelectionForm.pas' {ConnectorSelectionFrm};
 
 {$R *.res}
 
@@ -65,55 +66,77 @@ end;
 
 
 Var
+  connectorForm : TConnectorSelectionFrm;
   taskList : TTaskOperationList;
   serviceTask : TDriverTaskObject;
   hScm : THandle;
   err : Cardinal;
   wow64 : LongBool;
+  connType : EIRPMonConnectorType;
+  initInfo : IRPMON_INIT_INFO;
 Begin
-If IsWow64Process(GetCurrentProcess, wow64) Then
+connType := ictNone;
+driverStarted := False;
+Application.Initialize;
+Application.MainFormOnTaskbar := True;
+err := TablesInit('ntstatus.txt', 'ioctl.txt');
+If err = ERROR_SUCCESS Then
   begin
-  If Not wow64 Then
+  FillChar(initInfo, SizeOf(initInfo), 0);
+  initInfo.AddressFamily := 2;
+  connectorForm := TConnectorSelectionFrm.Create(Application);
+  With connectorForm Do
     begin
-    driverStarted := False;
-    Application.Initialize;
-    Application.MainFormOnTaskbar := True;
-    err := TablesInit('ntstatus.txt', 'ioctl.txt');
-    If err = ERROR_SUCCESS Then
+    ShowModal;
+    If Not Cancelled Then
       begin
-      hScm := OpenSCManagerW(Nil, Nil, scmAccess);
-      If hScm <> 0 Then
-        begin
-        taskList := TTaskOperationList.Create;
-        serviceTask := TDriverTaskObject.Create(hScm, serviceName, serviceDescription, serviceDescription, ExtractFilePath(Application.ExeName) + 'irpmndrv.sys');
-        serviceTask.SetCompletionCallback(OnServiceTaskComplete, Nil);
-        taskList.Add(hooHook, serviceTask);
-        taskList.Add(hooStart, serviceTask);
-        taskList.Add(hooLibraryInitialize, serviceTask);
-        With THookProgressFrm.Create(Application, taskList) Do
-          begin
-          ShowModal;
-          Free;
+      connType := ConnectionType;
+      case connType of
+        ictDevice : initInfo.DeviceName := PWideChar(DeviceName);
+        ictNetwork : begin
+          initInfo.NetworkHost := PWideChar(NetworkAddress);
+          initInfo.NetworkPort := PWideChar(NetworkPort);
           end;
+        end;
+      end;
+    end;
 
-        Application.CreateForm(TMainFrm, MainFrm);
+  initInfo.ConnectionType := connType;
+  If connType = ictDevice Then
+    begin
+    hScm := OpenSCManagerW(Nil, Nil, scmAccess);
+    end;
+
+  taskList := TTaskOperationList.Create;
+  serviceTask := TDriverTaskObject.Create(initInfo, hScm, serviceName, serviceDescription, serviceDescription, ExtractFilePath(Application.ExeName) + 'irpmndrv.sys');
+  serviceTask.SetCompletionCallback(OnServiceTaskComplete, Nil);
+  If connType = ictDevice Then
+    begin
+    taskList.Add(hooHook, serviceTask);
+    taskList.Add(hooStart, serviceTask);
+    end;
+
+  taskList.Add(hooLibraryInitialize, serviceTask);
+  With THookProgressFrm.Create(Application, taskList) Do
+    begin
+    ShowModal;
+    Free;
+    end;
+
+  Application.CreateForm(TMainFrm, MainFrm);
+  MainFrm.ServiceTask := serviceTask;
   MainFrm.TaskList := taskList;
-        MainFrm.ServiceTask := serviceTask;
-        Application.Run;
-        IRPMonDllFinalize;
+  MainFrm.ConnectorType := connType;
+  Application.Run;
+  IRPMonDllFinalize;
+  If connType = ictDevice Then
+    CloseServiceHandle(hScm);
 
-        serviceTask.Free;
-        taskList.Free;
-        CloseServiceHandle(hScm);
-        end
-      Else WinErrorMessage('Unable to access SCM database', GetLastError);
-
-      TablesFinit;
-      end
-    Else WinErrorMessage('Unable to initialize name tables', err);
-    end
-  Else ErrorMessage('IRPMon cannot be run under WOW64. Please run the 64-bit version of the program');
+   serviceTask.Free;
+   taskList.Free;
+   connectorForm.Free;
+  TablesFinit;
   end
-Else WinErrorMessage('Failed to determine whether the IRPMon process is runnin under WOW64', GetLastError);
+Else WinErrorMessage('Unable to initialize name tables', err);
 End.
 

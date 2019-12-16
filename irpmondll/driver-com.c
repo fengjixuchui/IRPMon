@@ -22,9 +22,9 @@ typedef VOID(WINAPI RTLFREEUNICODESTRING)(PUNICODE_STRING String);
 /************************************************************************/
 
 
-static HANDLE _deviceHandle = INVALID_HANDLE_VALUE;
 static BOOLEAN _initialized = FALSE;
-static BOOLEAN _connected = FALSE;
+static PIRPMON_DRIVER_COMM_INTERFACE _dcInterface = NULL;
+static HMODULE _hConnector = NULL;
 
 static RTLSTRINGFROMGUID *_RtlStringFromGuid = NULL;
 static RTLFREEUNICODESTRING *_RtlFreeUnicodeString = NULL;
@@ -33,66 +33,6 @@ static RTLFREEUNICODESTRING *_RtlFreeUnicodeString = NULL;
 /************************************************************************/
 /*                          HELPER ROUTINES                             */
 /************************************************************************/
-
-
-static DWORD _SynchronousNoIOIOCTL(DWORD Code)
-{
-	DWORD dummy = 0;
-	DWORD ret = ERROR_GEN_FAILURE;
-	DEBUG_ENTER_FUNCTION("Code=0x%x", Code);
-
-	if (DeviceIoControl(_deviceHandle, Code, NULL, 0, NULL, 0, &dummy, NULL))
-		ret = ERROR_SUCCESS;
-	else ret = GetLastError();
-
-	DEBUG_EXIT_FUNCTION("%u", ret);
-	return ret;
-}
-
-
-static DWORD _SynchronousWriteIOCTL(DWORD Code, PVOID InputBuffer, ULONG InputBufferLength)
-{
-	DWORD dummy = 0;
-	DWORD ret = ERROR_GEN_FAILURE;
-	DEBUG_ENTER_FUNCTION("Code=0x%x; InputBuffer=0x%p; InputBufferLength=%u", Code, InputBuffer, InputBufferLength);
-
-	if (DeviceIoControl(_deviceHandle, Code, InputBuffer, InputBufferLength, NULL, 0, &dummy, NULL))
-		ret = ERROR_SUCCESS;
-	else ret = GetLastError();
-
-	DEBUG_EXIT_FUNCTION("%u", ret);
-	return ret;
-}
-
-
-static DWORD _SynchronousReadIOCTL(DWORD Code, PVOID OutputBuffer, ULONG OutputBufferLength)
-{
-	DWORD dummy = 0;
-	DWORD ret = ERROR_GEN_FAILURE;
-	DEBUG_ENTER_FUNCTION("Code=0x%x; OutputBuffer=0x%p; OutputBufferLength=%u", Code, OutputBuffer, OutputBufferLength);
-
-	if (DeviceIoControl(_deviceHandle, Code, NULL, 0, OutputBuffer, OutputBufferLength, &dummy, NULL))
-		ret = ERROR_SUCCESS;
-	else ret = GetLastError();
-
-	DEBUG_EXIT_FUNCTION("%u", ret);
-	return ret;
-}
-
-
-static DWORD _SynchronousOtherIOCTL(DWORD Code, PVOID InputBuffer, ULONG InputBufferLength, PVOID OutputBuffer, ULONG OutputBufferLength)
-{
-	DWORD dummy = 0;
-	DWORD ret = ERROR_GEN_FAILURE;
-	DEBUG_ENTER_FUNCTION("Code=0x%x; InputBuffer=0x%p; InputBufferLength=%u; OutputBuffer=0x%p; OutputBufferLength=%u", Code, InputBuffer, InputBufferLength, OutputBuffer, OutputBufferLength);
-
-	if (DeviceIoControl(_deviceHandle, Code, InputBuffer, InputBufferLength, OutputBuffer, OutputBufferLength, &dummy, NULL))
-		ret = ERROR_SUCCESS;
-	else ret = GetLastError();
-
-	DEBUG_EXIT_FUNCTION("%u", ret);
-	return ret;
-}
 
 
 static PIRPMON_DRIVER_INFO _DriverInfoAlloc(PVOID DriverObject, PWCHAR Drivername, ULONG DriverNameLen, ULONG DeviceCount)
@@ -220,18 +160,7 @@ DWORD DriverComSnapshotRetrieve(PIRPMON_DRIVER_INFO **DriverInfo, PULONG InfoCou
 	DWORD ret = ERROR_GEN_FAILURE;
 	DEBUG_ENTER_FUNCTION("DriverInfo=0x%p; InfoCount=0x%p", DriverInfo, InfoCount);
 
-	do {
-		outputBuffer = HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, outputBufferLength);
-		if (outputBuffer != NULL) {
-			ret = _SynchronousReadIOCTL(IOCTL_IRPMNDRV_GET_DRIVER_DEVICE_INFO, outputBuffer, outputBufferLength);
-			if (ret != ERROR_SUCCESS) {
-				HeapFree(GetProcessHeap(), 0, outputBuffer);
-				if (ret == ERROR_INSUFFICIENT_BUFFER)
-					outputBufferLength *= 2;
-			}
-		} else ret = GetLastError();
-	} while (ret == ERROR_INSUFFICIENT_BUFFER);
-
+	ret = _SynchronousVariableOutputIOCTL(IOCTL_IRPMNDRV_GET_DRIVER_DEVICE_INFO, NULL, 0, outputBufferLength, &outputBuffer, &outputBufferLength);
 	if (ret == ERROR_SUCCESS) {
 		PUCHAR tmpBuffer = (PUCHAR)outputBuffer;
 
@@ -331,22 +260,25 @@ VOID DriverComSnapshotFree(PIRPMON_DRIVER_INFO *DriverInfo, ULONG Count)
 DWORD DriverComHookDriver(PWCHAR DriverName, PDRIVER_MONITOR_SETTINGS MonitorSettings, PHANDLE HookHandle, PVOID *ObjectId)
 {
 	DWORD ret = ERROR_GEN_FAILURE;
-	IOCTL_IRPMNDRV_HOOK_DRIVER_INPUT input;
+	ULONG nameLen = 0;
+	PIOCTL_IRPMNDRV_HOOK_DRIVER_INPUT input = NULL;
 	IOCTL_IRPMNDRV_HOOK_DRIVER_OUTPUT output;
 	DEBUG_ENTER_FUNCTION("DriverName=\"%S\"; MonitorSettings=0x%p; HookHandle=0x%p; ObjectId=0x%p", DriverName, MonitorSettings, HookHandle, ObjectId);
 
-	input.DriverName = _CopyString(DriverName);
-	if (input.DriverName != NULL) {
-		input.DriverNameLength = (ULONG)wcslen(input.DriverName)*sizeof(WCHAR);
-		input.MonitorSettings = *MonitorSettings;
-		ret = _SynchronousOtherIOCTL(IOCTL_IRPMNDRV_HOOK_DRIVER, &input, sizeof(input), &output, sizeof(output));
+	nameLen = (ULONG)wcslen(DriverName)*sizeof(wchar_t);
+	input = HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, sizeof(IOCTL_IRPMNDRV_HOOK_DRIVER_INPUT) + nameLen);
+	if (input != NULL) {
+		input->DriverNameLength = nameLen;
+		input->MonitorSettings = *MonitorSettings;
+		memcpy(input + 1, DriverName, nameLen);
+		ret = _SynchronousOtherIOCTL(IOCTL_IRPMNDRV_HOOK_DRIVER, input, sizeof(IOCTL_IRPMNDRV_HOOK_DRIVER_INPUT) + nameLen, &output, sizeof(output));
 		if (ret == ERROR_SUCCESS) {
 			*HookHandle = output.HookHandle;
 			if (ObjectId != NULL)
 				*ObjectId = output.ObjectId;
 		}
 
-		HeapFree(GetProcessHeap(), 0, input.DriverName);
+		HeapFree(GetProcessHeap(), 0, input);
 	} else ret = ERROR_NOT_ENOUGH_MEMORY;
 
 	DEBUG_EXIT_FUNCTION("0x%x, *Hookandle=0x%p", ret, *HookHandle);
@@ -413,14 +345,12 @@ DWORD DriverComUnhookDriver(HANDLE HookHandle)
 	return ret;
 }
 
-DWORD DriverComConnect(HANDLE hSemaphore)
+DWORD DriverComConnect(void)
 {
 	DWORD ret = ERROR_GEN_FAILURE;
-	IOCTL_IRPMNDRV_CONNECT_INPUT input;
-	DEBUG_ENTER_FUNCTION("hSemaphore=0x%p", hSemaphore);
+	DEBUG_ENTER_FUNCTION_NO_ARGS();
 
-	input.SemaphoreHandle = hSemaphore;
-	ret = _SynchronousWriteIOCTL(IOCTL_IRPMNDRV_CONNECT, &input, sizeof(input));
+	ret = _SynchronousNoIOIOCTL(IOCTL_IRPMNDRV_CONNECT);
 
 	DEBUG_EXIT_FUNCTION("%u", ret);
 	return ret;
@@ -451,25 +381,28 @@ DWORD DriverComGetRequest(PREQUEST_HEADER Request, DWORD Size)
 DWORD DriverComHookDeviceByName(PWCHAR DeviceName, PHANDLE HookHandle, PVOID *ObjectId)
 {
 	DWORD ret = ERROR_GEN_FAILURE;
-	IOCTL_IRPMNDRV_HOOK_ADD_DEVICE_INPUT input;
+	ULONG nameLen = 0;
+	PIOCTL_IRPMNDRV_HOOK_ADD_DEVICE_INPUT input = NULL;
 	IOCTL_IRPMNDRV_HOOK_ADD_DEVICE_OUTPUT output;
 	DEBUG_ENTER_FUNCTION("DeviceName=\"%S\"; HookHandle=0x%p; ObjectId=0x%p", DeviceName, HookHandle, ObjectId);
 
-	input.HookByName = TRUE;
-	input.IRPSettings = NULL;
-	input.FastIoSettings = NULL;
-	input.DeviceAddress = NULL;
-	input.DeviceName = _CopyString(DeviceName);
-	if (input.DeviceName != NULL) {
-		input.DeviceNameLength = (ULONG)wcslen(input.DeviceName)*sizeof(WCHAR);
-		ret = _SynchronousOtherIOCTL(IOCTL_IRPMNDRV_HOOK_ADD_DEVICE, &input, sizeof(input), &output, sizeof(output));
+	nameLen = (ULONG)wcslen(DeviceName)*sizeof(WCHAR);
+	input = HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, sizeof(IOCTL_IRPMNDRV_HOOK_ADD_DEVICE_INPUT) + nameLen);
+	if (input != NULL) {
+		input->HookByName = TRUE;
+		input->IRPSettingsSpecified = FALSE;
+		input->FastIoSettingsSpecified = FALSE;
+		input->DeviceAddress = NULL;
+		input->DeviceNameLength = nameLen;
+		memcpy(input + 1, DeviceName, nameLen);
+		ret = _SynchronousOtherIOCTL(IOCTL_IRPMNDRV_HOOK_ADD_DEVICE, input, sizeof(IOCTL_IRPMNDRV_HOOK_ADD_DEVICE_INPUT) + nameLen, &output, sizeof(output));
 		if (ret == ERROR_SUCCESS) {
 			*HookHandle = output.DeviceHandle;
 			if (ObjectId != NULL)
 				*ObjectId = output.ObjectId;
 		}
 
-		HeapFree(GetProcessHeap(), 0, input.DeviceName);
+		HeapFree(GetProcessHeap(), 0, input);
 	} else ret = ERROR_NOT_ENOUGH_MEMORY;
 
 	DEBUG_EXIT_FUNCTION("%u, *HookHandle=0x%p", ret, *HookHandle);
@@ -484,11 +417,10 @@ DWORD DriverComHookDeviceByAddress(PVOID DeviceObject, PHANDLE HookHandle, PVOID
 	DEBUG_ENTER_FUNCTION("DeviceObject=0x%p; HookHandle=0x%p; ObjectId=0x%p", DeviceObject, HookHandle, ObjectId);
 
 	input.HookByName = FALSE;
-	input.DeviceName = NULL;
+	input.FastIoSettingsSpecified = FALSE;
+	input.IRPSettingsSpecified = FALSE;
 	input.DeviceNameLength = 0;
 	input.DeviceAddress = DeviceObject;
-	input.FastIoSettings = NULL;
-	input.IRPSettings = NULL;
 	ret = _SynchronousOtherIOCTL(IOCTL_IRPMNDRV_HOOK_ADD_DEVICE, &input, sizeof(input), &output, sizeof(output));
 	if (ret == ERROR_SUCCESS) {
 		*HookHandle = output.DeviceHandle;
@@ -528,9 +460,18 @@ DWORD DriverComDeviceSetInfo(HANDLE DeviceHandle, PUCHAR IRPSettings, PUCHAR Fas
 	IOCTL_IRPMNDRV_HOOK_DEVICE_SET_INFO_INPUT input;
 	DEBUG_ENTER_FUNCTION("DeviceHandle=0x%p; IRPSettings=0x%p; FastIoSettings=0x%p; MonitoringEnabled=%u", DeviceHandle, IRPSettings, FastIoSettings, MonitoringEnabled);
 
+	memset(&input, 0, sizeof(input));
 	input.DeviceHandle = DeviceHandle;
-	input.IRPSettings = IRPSettings;
-	input.FastIoSettings = FastIoSettings;
+	if (IRPSettings != NULL) {
+		input.IRPSettingsSpecified = TRUE;
+		memcpy(input.IRPSettings, IRPSettings, sizeof(input.IRPSettings));
+	}
+
+	if (FastIoSettings != NULL) {
+		input.FastIoSettingsSpecified = TRUE;
+		memcpy(input.FastIoSettings, FastIoSettings, sizeof(input.FastIoSettings));
+	}
+
 	input.MonitoringEnabled = MonitoringEnabled;
 	ret = _SynchronousWriteIOCTL(IOCTL_IRPMNDRV_HOOK_DEVICE_SET_INFO, &input, sizeof(input));
 
@@ -558,16 +499,7 @@ DWORD DriverComHookedObjectsEnumerate(PHOOKED_DRIVER_UMINFO *Info, PULONG Count)
 	DWORD ret = ERROR_GEN_FAILURE;
 	DEBUG_ENTER_FUNCTION("Info=0x%p; Count=0x%p", Info, Count);
 
-	do {
-		hoLen *= 2;
-		hookedObjects = (PHOOKED_OBJECTS_INFO)HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, hoLen);
-		if (hookedObjects != NULL) {
-			ret = _SynchronousReadIOCTL(IOCTL_IRPMONDRV_HOOK_GET_INFO, hookedObjects, hoLen);
-			if (ret != ERROR_SUCCESS)
-				HeapFree(GetProcessHeap(), 0, hookedObjects);
-		} else ret = GetLastError();
-	} while (ret == ERROR_INSUFFICIENT_BUFFER);
-
+	ret = _SynchronousVariableOutputIOCTL(IOCTL_IRPMONDRV_HOOK_GET_INFO, NULL, 0, hoLen, &hookedObjects, &hoLen);
 	if (ret == ERROR_SUCCESS) {
 		PHOOKED_DRIVER_UMINFO tmpInfo = NULL;
 
@@ -810,16 +742,7 @@ DWORD DriverComClassWatchEnum(PCLASS_WATCH_RECORD *Array, PULONG Count)
 	DWORD ret = ERROR_GEN_FAILURE;
 	DEBUG_ENTER_FUNCTION("Array=0x%p; Count=0x%p", Array, Count);
 
-	do {
-		outputSize *= 2;
-		output = (PIOCTL_IRPMNDRV_CLASS_WATCH_OUTPUT)HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, outputSize);
-		if (output != NULL) {
-			ret = _SynchronousReadIOCTL(IOCTL_IRPMNDRV_CLASS_WATCH_ENUM, output, outputSize);
-			if (ret != ERROR_SUCCESS)
-				HeapFree(GetProcessHeap(), 0, output);
-		} else ret = ERROR_NOT_ENOUGH_MEMORY;
-	} while (ret == ERROR_INSUFFICIENT_BUFFER);
-
+	ret = _SynchronousVariableOutputIOCTL(IOCTL_IRPMNDRV_CLASS_WATCH_ENUM, NULL, 0, outputSize, &output, &outputSize);
 	if (ret == ERROR_SUCCESS) {
 		if (output->Count > 0) {
 			tmpArray = (PCLASS_WATCH_RECORD)HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, output->Count*sizeof(CLASS_WATCH_RECORD));
@@ -957,16 +880,7 @@ DWORD DriverComDriverNameWatchEnum(PDRIVER_NAME_WATCH_RECORD *Array, PULONG Coun
 	DWORD ret = ERROR_GEN_FAILURE;
 	DEBUG_ENTER_FUNCTION("Array=0x%p; Count=0x%p", Array, Count);
 
-	do {
-		outputSize *= 2;
-		output = (PIOCTL_IRPMNDRV_DRIVER_WATCH_ENUM_OUTPUT)HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, outputSize);
-		if (output != NULL) {
-			ret = _SynchronousReadIOCTL(IOCTL_IRPMNDRV_DRIVER_WATCH_ENUM, output, outputSize);
-			if (ret != ERROR_SUCCESS)
-				HeapFree(GetProcessHeap(), 0, output);
-		} else ret = ERROR_NOT_ENOUGH_MEMORY;
-	} while (ret == ERROR_INSUFFICIENT_BUFFER);
-
+	ret = _SynchronousVariableOutputIOCTL(IOCTL_IRPMNDRV_DRIVER_WATCH_ENUM, NULL, 0, outputSize, &output, &outputSize);
 	if (ret == ERROR_SUCCESS) {
 		if (output->Count > 0) {
 			tmpArray = (PDRIVER_NAME_WATCH_RECORD)HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, output->Count*sizeof(CLASS_WATCH_RECORD));
@@ -1034,36 +948,134 @@ VOID DriverComDriverNameWatchEnumFree(PDRIVER_NAME_WATCH_RECORD Array, ULONG Cou
 	return;
 }
 
+
+BOOL DriverComDeviceConnected(VOID)
+{
+	BOOL ret = FALSE;
+	DEBUG_ENTER_FUNCTION_NO_ARGS();
+
+	if (_dcInterface != NULL)
+		ret = _dcInterface->Connected();
+
+	DEBUG_EXIT_FUNCTION("%u", ret);
+	return ret;
+}
+
+
+DWORD _SynchronousNoIOIOCTL(DWORD Code)
+{
+	return _SynchronousOtherIOCTL(Code, NULL, 0, NULL, 0);
+}
+
+
+DWORD _SynchronousWriteIOCTL(DWORD Code, PVOID InputBuffer, ULONG InputBufferLength)
+{
+	return _SynchronousOtherIOCTL(Code, InputBuffer, InputBufferLength, NULL, 0);
+}
+
+
+DWORD _SynchronousReadIOCTL(DWORD Code, PVOID OutputBuffer, ULONG OutputBufferLength)
+{
+	return _SynchronousOtherIOCTL(Code, NULL, 0, OutputBuffer, OutputBufferLength);
+}
+
+
+DWORD _SynchronousOtherIOCTL(DWORD Code, PVOID InputBuffer, ULONG InputBufferLength, PVOID OutputBuffer, ULONG OutputBufferLength)
+{
+	DWORD ret = ERROR_GEN_FAILURE;
+	DEBUG_ENTER_FUNCTION("Code=0x%x; InputBuffer=0x%p; InputBufferLength=%u; OutputBuffer=0x%p; OutputBufferLength=%u", Code, InputBuffer, InputBufferLength, OutputBuffer, OutputBufferLength);
+
+	ret = ERROR_NOT_SUPPORTED;
+	if (_dcInterface != NULL)
+		ret = _dcInterface->SynchronousIoctl(Code, InputBuffer, InputBufferLength, OutputBuffer, OutputBufferLength);
+
+	DEBUG_EXIT_FUNCTION("%u", ret);
+	return ret;
+}
+
+
+DWORD _SynchronousVariableOutputIOCTL(ULONG Code, PVOID InputBuffer, ULONG InputBufferLength, ULONG InitialSize, PVOID *OutputBuffer, PULONG OutputBufferLength)
+{
+	ULONG outputSize = 0;
+	DWORD ret = ERROR_GEN_FAILURE;
+	PVOID output = NULL;
+	DEBUG_ENTER_FUNCTION("Code=0x%x; InputBuffer=0x%p; InputBufferLength=%u; InitialSize=%u; OutputBuffer=0x%p; OutputBufferLength=0x%p", Code, InputBuffer, InputBufferLength, InitialSize, OutputBuffer, OutputBufferLength);
+
+	outputSize = InitialSize;
+	if (outputSize == 0)
+		outputSize = 512;
+
+	do {
+		output = HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, outputSize);
+		if (output != NULL) {
+			ret = _SynchronousOtherIOCTL(Code, InputBuffer, InputBufferLength, output, outputSize);
+			if (ret != ERROR_SUCCESS) {
+				outputSize *= 2;
+				HeapFree(GetProcessHeap(), 0, output);
+			}
+		} else ret = ERROR_NOT_ENOUGH_MEMORY;
+	} while (ret == ERROR_INSUFFICIENT_BUFFER);
+
+	if (ret == ERROR_SUCCESS) {
+		*OutputBuffer = output;
+		*OutputBufferLength = outputSize;
+	}
+
+	DEBUG_EXIT_FUNCTION("%u, *OutputBuffer=0x%p, *OutputBufferLength=%u", ret, *OutputBuffer, *OutputBufferLength);
+	return ret;
+}
+
+
 /************************************************************************/
 /*                   INITIALIZATION AND FINALIZATION                    */
 /************************************************************************/
 
 
-BOOL DriverComDeviceConnected(VOID)
-{
-	return (_deviceHandle != INVALID_HANDLE_VALUE);
-}
-
-
-DWORD DriverComModuleInit(VOID)
+DWORD DriverComModuleInit(const IRPMON_INIT_INFO *Info)
 {
 	HMODULE HNtdll = NULL;
+	const wchar_t *libraryName = NULL;
 	DWORD ret = ERROR_GEN_FAILURE;
-	DEBUG_ENTER_FUNCTION_NO_ARGS();
+	DEBUG_ENTER_FUNCTION("Info=0x%p", Info);
 
+	ret = ERROR_SUCCESS;
 	HNtdll = GetModuleHandleW(L"ntdll.dll");
 	if (HNtdll != NULL) {
 		_RtlStringFromGuid = (RTLSTRINGFROMGUID *)GetProcAddress(HNtdll, "RtlStringFromGUID");
 		if (_RtlStringFromGuid != NULL) {
 			_RtlFreeUnicodeString = (RTLFREEUNICODESTRING *)GetProcAddress(HNtdll, "RtlFreeUnicodeString");
 			if (_RtlFreeUnicodeString != NULL) {
-				_deviceHandle = CreateFileW(IRPMNDRV_USER_DEVICE_NAME, GENERIC_READ | GENERIC_WRITE, 0, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
-				_initialized = (_deviceHandle != INVALID_HANDLE_VALUE);
-				if (_initialized)
-					ret = ERROR_SUCCESS;
+				switch (Info->ConnectorType) {
+					case ictNone:
+						libraryName = NULL;
+						break;
+					case ictDevice:
+						libraryName = L"device-connector.dll";
+						break;
+					case ictNetwork:
+						libraryName = L"network-connector.dll";
+						break;
+					default:
+						ret = ERROR_NOT_SUPPORTED;
+						break;
+				}
+				
+				if (libraryName != NULL) {
+					_hConnector = LoadLibraryW(libraryName);
+					if (_hConnector != NULL) {
+						_dcInterface = (PIRPMON_DRIVER_COMM_INTERFACE)GetProcAddress(_hConnector, "DriverCommInterface");
+						if (_dcInterface != NULL) {
+							ret = _dcInterface->Connect(Info);
+							if (ret != ERROR_SUCCESS)
+								_dcInterface = NULL;
+						} else ret = GetLastError();
 
-				if (!_initialized)
-					ret = GetLastError();
+						if (ret != ERROR_SUCCESS)
+							FreeLibrary(_hConnector);
+					} else ret = GetLastError();
+				}
+
+				_initialized = (ret == ERROR_SUCCESS);
 			} else ret = GetLastError();
 		} else ret = GetLastError();
 	} else ret = GetLastError();
@@ -1072,14 +1084,17 @@ DWORD DriverComModuleInit(VOID)
 	return ret;
 }
 
+
 VOID DriverComModuleFinit(VOID)
 {
 	DEBUG_ENTER_FUNCTION_NO_ARGS();
 
-	_connected = FALSE;
 	_initialized = FALSE;
-	CloseHandle(_deviceHandle);
-	_deviceHandle = INVALID_HANDLE_VALUE;
+	if (_dcInterface != NULL) {
+		_dcInterface->Disconnect();
+		_dcInterface = NULL;
+		FreeLibrary(_hConnector);
+	}
 
 	DEBUG_EXIT_FUNCTION_VOID();
 	return;

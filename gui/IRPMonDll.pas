@@ -326,6 +326,7 @@ Const
   REQUEST_FLAG_ADMIN               = $4;
   REQUEST_FLAG_IMPERSONATED        = $8;
   REQUEST_FLAG_IMPERSONATED_ADMIN  = $10;
+  REQUEST_FLAG_NEXT_AVAILABLE      = $20;
 
 Type
   (** Header, containing information common for all request types. *)
@@ -687,7 +688,28 @@ Type
   DRIVER_NAME_WATCH_RECORD = _DRIVER_NAME_WATCH_RECORD;
   PDRIVER_NAME_WATCH_RECORD = ^DRIVER_NAME_WATCH_RECORD;
 
+  _EIRPMonConnectorType = (
+    ictNone,
+    ictDevice,
+    ictNetwork
+  );
+  EIRPMonConnectorType = _EIRPMonConnectorType;
+  PEIRPMonConnectorType = ^EIRPMonConnectorType;
 
+  _IRPMON_INIT_INFO = Record
+    ConnectionType : EIRPMonConnectorType;
+    Case EIRPMonConnectorType Of
+      ictDevice : (
+        DeviceName : PWideChar;
+        );
+      ictNetwork : (
+          NetworkHost : PWideChar;
+          NetworkPort : PWideChar;
+          AddressFamily : Word;
+        );
+    end;
+  IRPMON_INIT_INFO = _IRPMON_INIT_INFO;
+  PIRPMON_INIT_INFO = ^IRPMON_INIT_INFO;
 
 Function IRPMonDllDriverHooksEnumerate(Var AHookedDrivers:PHOOKED_DRIVER_UMINFO; Var ACount:Cardinal):Cardinal; StdCall;
 Procedure IRPMonDllDriverHooksFree(AHookedDrivers:PHOOKED_DRIVER_UMINFO; ACount:Cardinal); StdCall;
@@ -707,7 +729,7 @@ Function IRPMonDllHookedDriverGetInfo(AHandle:THandle; Var ASettings:DRIVER_MONI
 Function IRPMonDllSnapshotRetrieve(Var ADriverInfo:PPIRPMON_DRIVER_INFO; Var ACount:Cardinal):Cardinal; StdCall;
 Procedure IRPMonDllSnapshotFree(ADriverInfo:PPIRPMON_DRIVER_INFO; ACount:Cardinal); StdCall;
 
-Function IRPMonDllConnect(ASemaphore:THandle):Cardinal; StdCall;
+Function IRPMonDllConnect:Cardinal; StdCall;
 Function IRPMonDllDisconnect:Cardinal; StdCall;
 Function IRPMonDllGetRequest(ARequest:PREQUEST_HEADER; ASize:Cardinal):Cardinal; StdCall;
 Function IRPMonDllGetRequestSize(ARequest:PREQUEST_HEADER):Cardinal; StdCall;
@@ -730,7 +752,7 @@ Procedure IRPMonDllDriverNameWatchEnumFree(AArray:PDRIVER_NAME_WATCH_RECORD; ACo
 
 
 Function IRPMonDllInitialized:LongBool; StdCall;
-Function IRPMonDllInitialize:Cardinal; StdCall;
+Function IRPMonDllInitialize(Var AInfo:IRPMON_INIT_INFO):Cardinal; StdCall;
 Procedure IRPMonDllFinalize; StdCall;
 
 Implementation
@@ -757,7 +779,7 @@ Function IRPMonDllHookedDriverGetInfo(AHandle:THandle; Var ASettings:DRIVER_MONI
 Function IRPMonDllSnapshotRetrieve(Var ADriverInfo:PPIRPMON_DRIVER_INFO; Var ACount:Cardinal):Cardinal; StdCall; External LibraryName;
 Procedure IRPMonDllSnapshotFree(ADriverInfo:PPIRPMON_DRIVER_INFO; ACount:Cardinal); StdCall; External LibraryName;
 
-Function IRPMonDllConnect(ASemaphore:THandle):Cardinal; StdCall; External LibraryName;
+Function IRPMonDllConnect:Cardinal; StdCall; External LibraryName;
 Function IRPMonDllDisconnect:Cardinal; StdCall; External LibraryName;
 Function IRPMonDllGetRequest(ARequest:PREQUEST_HEADER; ASize:Cardinal):Cardinal; StdCall; External LibraryName;
 Function IRPMonDllGetRequestSize(ARequest:PREQUEST_HEADER):Cardinal; StdCall; External LibraryName;
@@ -778,7 +800,7 @@ Function IRPMonDllDriverNameWatchEnum(Var AArray:PDRIVER_NAME_WATCH_RECORD; Var 
 Procedure IRPMonDllDriverNameWatchEnumFree(AArray:PDRIVER_NAME_WATCH_RECORD; ACount:Cardinal); StdCall; External LibraryName;
 
 Function IRPMonDllInitialized:LongBool; StdCall; External LibraryName;
-Function IRPMonDllInitialize:Cardinal; StdCall; External LibraryName;
+Function IRPMonDllInitialize(Var AInfo:IRPMON_INIT_INFO):Cardinal; StdCall; External LibraryName;
 Procedure IRPMonDllFinalize; StdCall; External LibraryName;
 
 

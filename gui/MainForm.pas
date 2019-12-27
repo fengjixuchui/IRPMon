@@ -63,6 +63,16 @@ Type
     RPHighlightMenuItem: TMenuItem;
     RPExcludeMenuItem: TMenuItem;
     HighlightColorDialog: TColorDialog;
+    StatusBar1: TStatusBar;
+    StatusTimer: TTimer;
+    N4: TMenuItem;
+    ReqQueueClearOnDisconnectMenuItem: TMenuItem;
+    ReqQueueCollectWhenDisconnectedMenuItem: TMenuItem;
+    ProcessEventsCollectMenuItem: TMenuItem;
+    FileObjectEventsCollectMenuItem: TMenuItem;
+    DriverSnapshotEventsCollectMenuItem: TMenuItem;
+    ProcessEmulateOnConnectMenuItem: TMenuItem;
+    DriverSnapshotOnConnectMenuItem: TMenuItem;
     Procedure ClearMenuItemClick(Sender: TObject);
     procedure FormCreate(Sender: TObject);
     procedure CaptureEventsMenuItemClick(Sender: TObject);
@@ -86,6 +96,9 @@ Type
     procedure RPDetailsMenuItemClick(Sender: TObject);
     procedure RequestPopupMenuPopup(Sender: TObject);
     procedure PopupFilterClick(Sender: TObject);
+    procedure StatusTimerTimer(Sender: TObject);
+    procedure DriverSettingsMenuItemClick(Sender: TObject);
+    procedure DriverMenuItemExpand(Sender: TObject);
   Private
 {$IFDEF FPC}
     FAppEvents: TApplicationProperties;
@@ -441,6 +454,59 @@ M := Sender As TMenuItem;
 M.Checked := Not M.Checked;
 end;
 
+Procedure TMainFrm.DriverMenuItemExpand(Sender: TObject);
+Var
+  err : Cardinal;
+  settings : IRPMNDRV_SETTINGS;
+begin
+err := IRPMonDllSettingsQuery(settings);
+ReqQueueClearOnDisconnectMenuItem.Enabled := (err = ERROR_SUCCESS);
+ReqQueueCollectWhenDisconnectedMenuItem.Enabled := (err = ERROR_SUCCESS);
+ProcessEventsCollectMenuItem.Enabled := (err = ERROR_SUCCESS);
+FileObjectEventsCollectMenuItem.Enabled := (err = ERROR_SUCCESS);
+DriverSnapshotEventsCollectMenuItem.Enabled := (err = ERROR_SUCCESS);
+ProcessEmulateOnConnectMenuItem.Enabled := (err = ERROR_SUCCESS);
+DriverSnapshotOnConnectMenuItem.Enabled := (err = ERROR_SUCCESS);
+If err = ERROR_SUCCESS Then
+  begin
+  ReqQueueClearOnDisconnectMenuItem.Checked := settings.ReqQueueClearOnDisconnect;
+  ReqQueueCollectWhenDisconnectedMenuItem.Checked := settings.ReqQueueCollectWhenDisconnected;
+  ProcessEventsCollectMenuItem.Checked := settings.ProcessEventsCollect;
+  FileObjectEventsCollectMenuItem.Checked := settings.FileObjectEventsCollect;
+  DriverSnapshotEventsCollectMenuItem.Checked := settings.DriverSnapshotEventsCollect;
+  ProcessEmulateOnConnectMenuItem.Checked := settings.ProcessEmulateOnConnect;
+  DriverSnapshotOnConnectMenuItem.Checked := settings.DriverSnapshotOnConnect;
+  end;
+end;
+
+Procedure TMainFrm.DriverSettingsMenuItemClick(Sender: TObject);
+Var
+  M : TMenuItem;
+  err : Cardinal;
+  pv : ^ByteBool;
+  settings : IRPMNDRV_SETTINGS;
+begin
+M := Sender As TMenuItem;
+err := IRPMonDllSettingsQuery(settings);
+If err = ERROR_SUCCESS Then
+  begin
+  pv := Nil;
+  Case M.Tag Of
+    0 : pv := @settings.ReqQueueClearOnDisconnect;
+    1 : pv := @settings.ReqQueueCollectWhenDisconnected;
+    2 : pv := @settings.ProcessEventsCollect;
+    3 : pv := @settings.FileObjectEventsCollect;
+    4 : pv := @settings.DriverSnapshotEventsCollect;
+    5 : pv := @settings.ProcessEmulateOnConnect;
+    6 : pv := @settings.DriverSnapshotOnConnect;
+    end;
+
+  M.Checked := Not M.Checked;
+  pv^ := M.Checked;
+  err := IRPMonDllSettingsSet(settings, True);
+  end;
+end;
+
 Procedure TMainFrm.RefreshNameCacheMenuItemClick(Sender: TObject);
 Var
   err : Cardinal;
@@ -552,6 +618,30 @@ end;
 Procedure TMainFrm.SortbyIDMenuItemClick(Sender: TObject);
 begin
 FModel.Sort;
+end;
+
+Procedure TMainFrm.StatusTimerTimer(Sender: TObject);
+Var
+  err : Cardinal;
+  settings : IRPMNDRV_SETTINGS;
+  statusText : WideString;
+begin
+err := IRPMonDllSettingsQuery(settings);
+If err = ERROR_SUCCESS Then
+  begin
+  If settings.ReqQueueConnected Then
+    statusText := 'Monitoring | Requests: '
+  Else statusText := 'Not monitoring | Requests: ';
+
+  If settings.ReqQueueConnected Then
+    statusText := statusText + Format('%u queued, ', [settings.ReqQueueLength]);
+
+  statusText := statusText + Format('%u displayed, ', [FModel.RowCount]);
+  statusText := statusText + Format('%u total', [FModel.TotalCount]);
+  end
+Else statusText := Format('Unable to get driver information: %s (%u)', [SysErrorMessage(err), err]);
+
+StatusBar1.SimpleText := statusText;
 end;
 
 Procedure TMainFrm.WatchClassMenuItemClick(Sender: TObject);
@@ -739,7 +829,6 @@ Var
   M : TMenuItem;
   value : WideString;
   rq : TDriverRequest;
-  selectedColor : TColor;
 begin
 invalidButton := False;
 M := Sender As TMenuItem;
@@ -757,17 +846,18 @@ If Not invalidButton Then
   rq := FModel.Selected;
   rf := TRequestFilter.NewInstance(rq.RequestType);
   rf.SetCondition(ERequestListModelColumnType(M.Tag), rfoEquals, value);
-  selectedColor := $FFFFFF;
   If filterAction = ffaHighlight Then
     begin
     If highlightColorDialog.Execute Then
-      selectedColor := highlightColorDialog.Color;
+      begin
+      rf.SetAction(filterAction, highlightColorDialog.Color);
+      FFilters.Add(rf);
+      end;
+    end
+  Else begin
+    rf.SetAction(filterAction);
+    FFilters.Insert(0, rf);
     end;
-
-  rf.SetAction(filterAction);
-  If filterAction = ffaHighlight Then
-    FFilters.Add(rf)
-  Else FFilters.Insert(0, rf);
 
   FModel.Reevaluate;
   end;
@@ -873,14 +963,12 @@ end;
 
 Procedure TMainFrm.OnRequestProcessed(ARequest:TDriverRequest; Var AStore:Boolean);
 Var
-  matchResult : Cardinal;
   rf : TRequestFilter;
   matchingRF : TRequestFilter;
   allInclusive : Boolean;
   allExclusive : Boolean;
   noMatch : Boolean;
 begin
-matchingRF := Nil;
 allInclusive := True;
 allExclusive := True;
 noMatch := True;

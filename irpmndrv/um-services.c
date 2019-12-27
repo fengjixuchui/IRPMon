@@ -10,6 +10,8 @@
 #include "hook.h"
 #include "req-queue.h"
 #include "pnp-driver-watch.h"
+#include "process-events.h"
+#include "driver-settings.h"
 #include "um-services.h"
 
 
@@ -141,7 +143,9 @@ NTSTATUS UMHookDriver(PIOCTL_IRPMNDRV_HOOK_DRIVER_INPUT InputBuffer, ULONG Input
 			PDRIVER_OBJECT targetDriver = NULL;
 			UNICODE_STRING uDriverName;
 
-			RtlInitUnicodeString(&uDriverName, tmp);
+			uDriverName.Length = (USHORT)input.DriverNameLength;
+			uDriverName.MaximumLength = uDriverName.Length;
+			uDriverName.Buffer = tmp;
 			status = GetDriverObjectByName(&uDriverName, &targetDriver);
 			if (NT_SUCCESS(status)) {
 				PDRIVER_HOOK_RECORD driverRecord = NULL;
@@ -387,11 +391,14 @@ NTSTATUS UMHookDeleteDevice(PIOCTL_IRPMNDRV_HOOK_REMOVE_DEVICE_INPUT InputBuffer
 NTSTATUS UMGetRequestRecord(PVOID Buffer, ULONG BufferLength, PSIZE_T ReturnLength)
 {
 	SIZE_T requestSize = 0;
+	SIZE_T tmpRequestSize = 0;
 	PREQUEST_HEADER request;
+	size_t requestsAggregated = 0;
 	NTSTATUS status = STATUS_UNSUCCESSFUL;
 	DEBUG_ENTER_FUNCTION("Buffer=0x%p; BufferLength=%u; ReturnLength=0x%p", Buffer, BufferLength, ReturnLength);
 
 	if (BufferLength >= sizeof(REQUEST_HEADER)) {
+		*ReturnLength = 0;
 		if (ExGetPreviousMode() == UserMode) {
 			__try {
 				ProbeForWrite(Buffer, BufferLength, 1);
@@ -402,23 +409,46 @@ NTSTATUS UMGetRequestRecord(PVOID Buffer, ULONG BufferLength, PSIZE_T ReturnLeng
 		} else status = STATUS_SUCCESS;
 
 		if (NT_SUCCESS(status)) {
-			requestSize = BufferLength;
-			status = RequestQueueGet(&request, &requestSize);
-			if (NT_SUCCESS(status)) {
-				if (ExGetPreviousMode() == UserMode) {
-					__try {
+			do {
+				tmpRequestSize = requestSize;
+				requestSize = BufferLength;
+				status = RequestQueueGet(&request, &requestSize);
+				if (NT_SUCCESS(status)) {
+					Buffer = (unsigned char *)Buffer + tmpRequestSize;
+					if (ExGetPreviousMode() == UserMode) {
+						__try {
+							memcpy(Buffer, request, requestSize);
+							((PREQUEST_HEADER)Buffer)->Entry.Flink = (PLIST_ENTRY)((unsigned char *)Buffer + requestSize);
+						} __except (EXCEPTION_EXECUTE_HANDLER) {
+							status = GetExceptionCode();
+						}
+					} else {
 						memcpy(Buffer, request, requestSize);
-						*ReturnLength = requestSize;
-					} __except (EXCEPTION_EXECUTE_HANDLER) {
-						status = GetExceptionCode();
+						((PREQUEST_HEADER)Buffer)->Entry.Flink = (PLIST_ENTRY)((unsigned char *)Buffer + requestSize);
 					}
-				} else {
-					memcpy(Buffer, request, requestSize);
-					*ReturnLength = requestSize;
-				}
 
-				HeapMemoryFree(request);
-			}
+					if (NT_SUCCESS(status)) {
+						requestsAggregated++;
+						BufferLength -= (ULONG)requestSize;
+						*ReturnLength += requestSize;
+					}
+
+					HeapMemoryFree(request);
+				} else if (requestsAggregated > 0) {
+					if (status == STATUS_BUFFER_TOO_SMALL || status == STATUS_NO_MORE_ENTRIES)
+						status = STATUS_SUCCESS;
+
+					if (ExGetPreviousMode() == UserMode) {
+						__try {
+							((PREQUEST_HEADER)Buffer)->Entry.Flink = NULL;
+						} __except (EXCEPTION_EXECUTE_HANDLER) {
+							status = GetExceptionCode();
+						}
+					} else ((PREQUEST_HEADER)Buffer)->Entry.Flink = NULL;
+
+					break;
+				}
+			} while (NT_SUCCESS(status));
 		}
 	} else status = STATUS_BUFFER_TOO_SMALL;
 
@@ -650,6 +680,16 @@ VOID UMRequestQueueDisconnect(VOID)
 	DEBUG_ENTER_FUNCTION_NO_ARGS();
 
 	RequestQueueDisconnect();
+
+	DEBUG_EXIT_FUNCTION_VOID();
+	return;
+}
+
+void UMRequestQueueClear(void)
+{
+	DEBUG_ENTER_FUNCTION_NO_ARGS();
+
+	RequestQueueClear();
 
 	DEBUG_EXIT_FUNCTION_VOID();
 	return;
@@ -1225,6 +1265,110 @@ NTSTATUS UMDriverNamehUnregister(PIOCTL_IRPMNDRV_DRIVER_WATCH_UNREGISTER_INPUT I
 	return status;
 }
 
+
+NTSTATUS UMListDriversDevicesByEvents(void)
+{
+	LIST_ENTRY eventListHead;
+	PREQUEST_HEADER old = NULL;
+	PREQUEST_HEADER tmpRequest = NULL;
+	NTSTATUS status = STATUS_UNSUCCESSFUL;
+	DEBUG_ENTER_FUNCTION_NO_ARGS();
+
+	InitializeListHead(&eventListHead);
+	status = ListDriversAndDevicesByEvents(&eventListHead);
+	if (NT_SUCCESS(status)) {
+		tmpRequest = CONTAINING_RECORD(eventListHead.Blink, REQUEST_HEADER, Entry);
+		while (&tmpRequest->Entry != &eventListHead) {
+			old = tmpRequest;
+			tmpRequest = CONTAINING_RECORD(tmpRequest->Entry.Blink, REQUEST_HEADER, Entry);
+			RemoveEntryList(&old->Entry);
+			if (NT_SUCCESS(status)) {
+				old->Flags |= REQUEST_FLAG_EMULATED;
+				RequestQueueInsert(old);
+			} else HeapMemoryFree(old);
+		}
+	}
+
+	DEBUG_EXIT_FUNCTION("0x%x", status);
+	return status;
+}
+
+
+NTSTATUS UMListProcessesByEvents(void)
+{
+	LIST_ENTRY eventListHead;
+	PREQUEST_HEADER old = NULL;
+	PREQUEST_HEADER psRequest = NULL;
+	NTSTATUS status = STATUS_UNSUCCESSFUL;
+	DEBUG_ENTER_FUNCTION_NO_ARGS();
+
+	InitializeListHead(&eventListHead);
+	status = ListProcessesByEvents(&eventListHead);
+	if (NT_SUCCESS(status)) {
+		psRequest = CONTAINING_RECORD(eventListHead.Blink, REQUEST_HEADER, Entry);
+		while (&psRequest->Entry != &eventListHead) {
+			old = psRequest;
+			psRequest = CONTAINING_RECORD(psRequest->Entry.Blink, REQUEST_HEADER, Entry);
+			RemoveEntryList(&old->Entry);
+			RequestQueueInsert(old);
+		}
+	}
+
+	DEBUG_EXIT_FUNCTION("0x%x", status);
+	return status;
+}
+
+
+NTSTATUS UMDriverSettingsQuery(PIOCTL_IRPMNDRV_SETTINGS_QUERY_OUTPUT OutputBuffer, ULONG OutputBufferLength, PULONG_PTR ReturnLength)
+{
+	PIRPMNDRV_SETTINGS settings = NULL;
+	NTSTATUS status = STATUS_UNSUCCESSFUL;
+	DEBUG_ENTER_FUNCTION("OutputBuffer=0x%p; OutputBufferLength=%u", OutputBuffer, OutputBufferLength);
+
+	if (OutputBufferLength >= sizeof(IOCTL_IRPMNDRV_SETTINGS_QUERY_OUTPUT)) {
+		status = STATUS_SUCCESS;
+		settings = DriverSettingsGet();
+		if (ExGetPreviousMode() == UserMode) {
+			__try {
+				ProbeForWrite(OutputBuffer, sizeof(OutputBuffer->Settings), 1);
+				memcpy(&OutputBuffer->Settings, settings, sizeof(OutputBuffer->Settings));
+			} __except (EXCEPTION_EXECUTE_HANDLER) {
+				status = GetExceptionCode();
+			}
+		} else memcpy(&OutputBuffer->Settings, settings, sizeof(OutputBuffer->Settings));
+
+		*ReturnLength = sizeof(OutputBuffer->Settings);
+	} else status = STATUS_INFO_LENGTH_MISMATCH;
+
+	DEBUG_EXIT_FUNCTION("0x%x, *ReturnLength=%zu", status, *ReturnLength);
+	return status;
+}
+
+
+NTSTATUS UMDriverSettingsSet(PIOCTL_IRPMNDRV_SETTINGS_SET_INPUT InputBuffer, ULONG InputBufferLength)
+{
+	IOCTL_IRPMNDRV_SETTINGS_SET_INPUT input = {0};
+	NTSTATUS status = STATUS_UNSUCCESSFUL;
+	DEBUG_ENTER_FUNCTION("InputBuffer=0x%p; InputBufferLength=%u", InputBuffer, InputBufferLength);
+
+	if (InputBufferLength >= sizeof(input)) {
+		status = STATUS_SUCCESS;
+		if (ExGetPreviousMode() == UserMode) {
+			__try {
+				ProbeForRead(InputBuffer, sizeof(input), 1);
+				input = *InputBuffer;
+			} __except (EXCEPTION_EXECUTE_HANDLER) {
+				status = GetExceptionCode();
+			}
+		} else input = *InputBuffer;
+
+		if (NT_SUCCESS(status))
+			status = DriverSettingsSet(&input.Settings, input.Save);
+	} else status = STATUS_INFO_LENGTH_MISMATCH;
+
+	DEBUG_EXIT_FUNCTION("0x%x", status);
+	return status;
+}
 
 
 /************************************************************************/

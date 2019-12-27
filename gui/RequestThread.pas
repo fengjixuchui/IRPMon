@@ -53,16 +53,17 @@ Var
   rq : PREQUEST_GENERAL;
   bufSize : Cardinal;
 begin
-bufSize := SizeOf(REQUEST_GENERAL) + 2048;
+bufSize := 65536;
 Repeat
 rq := AllocMem(bufSize);
 If Assigned(rq) Then
   begin
-  Result := IRPMonDllGetRequest(@rq.Header, SizeOf(REQUEST_GENERAL) + 2048);
+  Result := IRPMonDllGetRequest(@rq.Header, bufSize);
   If Result = ERROR_SUCCESS Then
     begin
     AList.Add(rq);
-    If ((rq.Header.Flags And REQUEST_FLAG_NEXT_AVAILABLE) = 0) Then
+    If ((rq.Header.Flags And REQUEST_FLAG_NEXT_AVAILABLE) = 0) Or
+       (AList.Count >= 200) Then
       Break;
     end;
 
@@ -88,7 +89,7 @@ l := TList<PREQUEST_GENERAL>.Create;
 While Not Terminated  Do
   begin
   ProcessRequest(l);
-  If l.Count > 20 Then
+  If l.Count >= 200 Then
     begin
     FCurrentList := l;
     PostRequestList;

@@ -57,6 +57,88 @@ Const
   UNPROTECTED_DACL_SECURITY_INFORMATION      = $20000000;
   UNPROTECTED_SACL_SECURITY_INFORMATION      = $10000000;
 
+Const
+  FIleInformationClassArray : Array [0..76] Of WideString = (
+    '0',
+    'FileDirectoryInformation',
+    'FileFullDirectoryInformation',                   // 2
+    'FileBothDirectoryInformation',                   // 3
+    'FileBasicInformation',                           // 4
+    'FileStandardInformation',                        // 5
+    'FileInternalInformation',                        // 6
+    'FileEaInformation',                              // 7
+    'FileAccessInformation',                          // 8
+    'FileNameInformation',                            // 9
+    'FileRenameInformation',                          // 10
+    'FileLinkInformation',                            // 11
+    'FileNamesInformation',                           // 12
+    'FileDispositionInformation',                     // 13
+    'FilePositionInformation',                        // 14
+    'FileFullEaInformation',                          // 15
+    'FileModeInformation',                            // 16
+    'FileAlignmentInformation',                       // 17
+    'FileAllInformation',                             // 18
+    'FileAllocationInformation',                      // 19
+    'FileEndOfFileInformation',                       // 20
+    'FileAlternateNameInformation',                   // 21
+    'FileStreamInformation',                          // 22
+    'FilePipeInformation',                            // 23
+    'FilePipeLocalInformation',                       // 24
+    'FilePipeRemoteInformation',                      // 25
+    'FileMailslotQueryInformation',                   // 26
+    'FileMailslotSetInformation',                     // 27
+    'FileCompressionInformation',                     // 28
+    'FileObjectIdInformation',                        // 29
+    'FileCompletionInformation',                      // 30
+    'FileMoveClusterInformation',                     // 31
+    'FileQuotaInformation',                           // 32
+    'FileReparsePointInformation',                    // 33
+    'FileNetworkOpenInformation',                     // 34
+    'FileAttributeTagInformation',                    // 35
+    'FileTrackingInformation',                        // 36
+    'FileIdBothDirectoryInformation',                 // 37
+    'FileIdFullDirectoryInformation',                 // 38
+    'FileValidDataLengthInformation',                 // 39
+    'FileShortNameInformation',                       // 40
+    'FileIoCompletionNotificationInformation',        // 41
+    'FileIoStatusBlockRangeInformation',              // 42
+    'FileIoPriorityHintInformation',                  // 43
+    'FileSfioReserveInformation',                     // 44
+    'FileSfioVolumeInformation',                      // 45
+    'FileHardLinkInformation',                        // 46
+    'FileProcessIdsUsingFileInformation',             // 47
+    'FileNormalizedNameInformation',                  // 48
+    'FileNetworkPhysicalNameInformation',             // 49
+    'FileIdGlobalTxDirectoryInformation',             // 50
+    'FileIsRemoteDeviceInformation',                  // 51
+    'FileUnusedInformation',                          // 52
+    'FileNumaNodeInformation',                        // 53
+    'FileStandardLinkInformation',                    // 54
+    'FileRemoteProtocolInformation',                  // 55
+    'FileRenameInformationBypassAccessCheck',         // 56
+    'FileLinkInformationBypassAccessCheck',           // 57
+    'FileVolumeNameInformation',                      // 58
+    'FileIdInformation',                              // 59
+    'FileIdExtdDirectoryInformation',                 // 60
+    'FileReplaceCompletionInformation',               // 61
+    'FileHardLinkFullIdInformation',                  // 62
+    'FileIdExtdBothDirectoryInformation',             // 63
+    'FileDispositionInformationEx',                   // 64
+    'FileRenameInformationEx',                        // 65
+    'FileRenameInformationExBypassAccessCheck',       // 66
+    'FileDesiredStorageClassInformation',             // 67
+    'FileStatInformation',                            // 68
+    'FileMemoryPartitionInformation',                 // 69
+    'FileStatLxInformation',                          // 70
+    'FileCaseSensitiveInformation',                   // 71
+    'FileLinkInformationEx',                          // 72
+    'FileLinkInformationExBypassAccessCheck',         // 73
+    'FileStorageReserveIdInformation',                // 74
+    'FileCaseSensitiveInformationForceAccessCheck',   // 75
+    'FileMaximumInformation'
+  );
+
+
 Type
   BUS_QUERY_ID_TYPE = (
     BusQueryDeviceID = 0,       // <Enumerator>\<Enumerator-specific device id>
@@ -331,7 +413,7 @@ Const
 Type
   (** Header, containing information common for all request types. *)
   _REQUEST_HEADER = Record
-	  Nothing1 : Pointer;
+	  Next : ^_REQUEST_HEADER;
     Nothing2 : Pointer;
 	  (** Date and time of the request's detection (in 100 nanosecond
 	    units from January 1 1601). *)
@@ -711,6 +793,22 @@ Type
   IRPMON_INIT_INFO = _IRPMON_INIT_INFO;
   PIRPMON_INIT_INFO = ^IRPMON_INIT_INFO;
 
+  _IRPMNDRV_SETTINGS = Record
+    ReqQueueLastRequestId : UInt32;
+	  ReqQueueLength : UInt32;
+	  ReqQueueConnected : ByteBool;
+	  ReqQueueClearOnDisconnect : ByteBool;
+	  ReqQueueCollectWhenDisconnected : ByteBool;
+	  ProcessEventsCollect : ByteBool;
+	  FileObjectEventsCollect : ByteBool;
+	  DriverSnapshotEventsCollect : ByteBool;
+	  ProcessEmulateOnConnect : ByteBool;
+	  DriverSnapshotOnConnect : ByteBool;
+    end;
+  IRPMNDRV_SETTINGS = _IRPMNDRV_SETTINGS;
+  PIRPMNDRV_SETTINGS = ^IRPMNDRV_SETTINGS;
+
+
 Function IRPMonDllDriverHooksEnumerate(Var AHookedDrivers:PHOOKED_DRIVER_UMINFO; Var ACount:Cardinal):Cardinal; StdCall;
 Procedure IRPMonDllDriverHooksFree(AHookedDrivers:PHOOKED_DRIVER_UMINFO; ACount:Cardinal); StdCall;
 
@@ -750,6 +848,11 @@ Function IRPMonDllDriverNameWatchUnregister(ADriverName:PWideChar):Cardinal; Std
 Function IRPMonDllDriverNameWatchEnum(Var AArray:PDRIVER_NAME_WATCH_RECORD; Var ACount:Cardinal):Cardinal; StdCall;
 Procedure IRPMonDllDriverNameWatchEnumFree(AArray:PDRIVER_NAME_WATCH_RECORD; ACount:Cardinal); StdCall;
 
+Function IRPMonDllEmulateDriverDevices:Cardinal; StdCall;
+Function IRPMonDllEmulateProcesses:Cardinal; StdCall;
+
+Function IRPMonDllSettingsQuery(Var ASettings:IRPMNDRV_SETTINGS):Cardinal; StdCall;
+Function IRPMonDllSettingsSet(Var ASettings:IRPMNDRV_SETTINGS; ASave:ByteBool):Cardinal; StdCall;
 
 Function IRPMonDllInitialized:LongBool; StdCall;
 Function IRPMonDllInitialize(Var AInfo:IRPMON_INIT_INFO):Cardinal; StdCall;
@@ -798,6 +901,12 @@ Function IRPMonDllDriverNameWatchRegister(ADriverName:PWideChar; Var AMonitorSet
 Function IRPMonDllDriverNameWatchUnregister(ADriverName:PWideChar):Cardinal; StdCall; External LibraryName;
 Function IRPMonDllDriverNameWatchEnum(Var AArray:PDRIVER_NAME_WATCH_RECORD; Var ACount:Cardinal):Cardinal; StdCall; External LibraryName;
 Procedure IRPMonDllDriverNameWatchEnumFree(AArray:PDRIVER_NAME_WATCH_RECORD; ACount:Cardinal); StdCall; External LibraryName;
+
+Function IRPMonDllEmulateDriverDevices:Cardinal; StdCall; External LibraryName;
+Function IRPMonDllEmulateProcesses:Cardinal; StdCall; External LibraryName;
+
+Function IRPMonDllSettingsQuery(Var ASettings:IRPMNDRV_SETTINGS):Cardinal; StdCall; External LibraryName;
+Function IRPMonDllSettingsSet(Var ASettings:IRPMNDRV_SETTINGS; ASave:ByteBool):Cardinal; StdCall; External LibraryName;
 
 Function IRPMonDllInitialized:LongBool; StdCall; External LibraryName;
 Function IRPMonDllInitialize(Var AInfo:IRPMON_INIT_INFO):Cardinal; StdCall; External LibraryName;

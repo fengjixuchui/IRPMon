@@ -409,6 +409,9 @@ Const
   REQUEST_FLAG_IMPERSONATED        = $8;
   REQUEST_FLAG_IMPERSONATED_ADMIN  = $10;
   REQUEST_FLAG_NEXT_AVAILABLE      = $20;
+  REQUEST_FLAG_COMPRESSED          = $40;
+  REQUEST_FLAG_PAGED					     = $80;
+  REQUEST_FLAG_NONPAGED				     = $100;
 
 Type
   (** Header, containing information common for all request types. *)
@@ -796,6 +799,8 @@ Type
   _IRPMNDRV_SETTINGS = Record
     ReqQueueLastRequestId : UInt32;
 	  ReqQueueLength : UInt32;
+    ReqQueueNonPagedLength : UInt32;
+    ReqQueuePagedLength : UInt32;
 	  ReqQueueConnected : ByteBool;
 	  ReqQueueClearOnDisconnect : ByteBool;
 	  ReqQueueCollectWhenDisconnected : ByteBool;
@@ -837,7 +842,6 @@ Function IRPMonDllCloseHookedDriverHandle(AHandle:THandle):Cardinal; StdCall;
 Function IRPMonDllOpenHookedDevice(AObjectId:Pointer; Var AHandle:THandle):Cardinal; StdCall;
 Function IRPMonDllCloseHookedDeviceHandle(AHandle:THandle):Cardinal; StdCall;
 
-
 Function IRPMonDllClassWatchRegister(AClassGuid:PWideChar; AUpperFilter:ByteBool; ABeginning:ByteBool):Cardinal; StdCall;
 Function IRPMonDllClassWatchUnregister(AClassGuid:PWideChar; AUpperFilter:ByteBool; ABeginning:ByteBool):Cardinal; StdCall;
 Function IRPMonDllClassWatchEnum(Var AArray:PCLASS_WATCH_RECORD; Var ACount:Cardinal):Cardinal; StdCall;
@@ -847,6 +851,12 @@ Function IRPMonDllDriverNameWatchRegister(ADriverName:PWideChar; Var AMonitorSet
 Function IRPMonDllDriverNameWatchUnregister(ADriverName:PWideChar):Cardinal; StdCall;
 Function IRPMonDllDriverNameWatchEnum(Var AArray:PDRIVER_NAME_WATCH_RECORD; Var ACount:Cardinal):Cardinal; StdCall;
 Procedure IRPMonDllDriverNameWatchEnumFree(AArray:PDRIVER_NAME_WATCH_RECORD; ACount:Cardinal); StdCall;
+
+Function IRPMonDllRequestCompress(AHeader:PREQUEST_HEADER):ByteBool; StdCall;
+Function IRPMonDllRequestDecompress(AHeader:PREQUEST_HEADER):PREQUEST_HEADER; StdCall;
+Function IRPMonDllRequestCopy(AHeader:PREQUEST_HEADER):PREQUEST_HEADER; StdCall;
+Function IRPMonDllRequestMemoryAlloc(ASize:NativeUInt):PREQUEST_HEADER; StdCall;
+Procedure IRPMonDllRequestMemoryFree(AHeader:PREQUEST_HEADER); StdCall;
 
 Function IRPMonDllEmulateDriverDevices:Cardinal; StdCall;
 Function IRPMonDllEmulateProcesses:Cardinal; StdCall;
@@ -901,6 +911,12 @@ Function IRPMonDllDriverNameWatchRegister(ADriverName:PWideChar; Var AMonitorSet
 Function IRPMonDllDriverNameWatchUnregister(ADriverName:PWideChar):Cardinal; StdCall; External LibraryName;
 Function IRPMonDllDriverNameWatchEnum(Var AArray:PDRIVER_NAME_WATCH_RECORD; Var ACount:Cardinal):Cardinal; StdCall; External LibraryName;
 Procedure IRPMonDllDriverNameWatchEnumFree(AArray:PDRIVER_NAME_WATCH_RECORD; ACount:Cardinal); StdCall; External LibraryName;
+
+Function IRPMonDllRequestCompress(AHeader:PREQUEST_HEADER):ByteBool; StdCall; External LibraryName;
+Function IRPMonDllRequestDecompress(AHeader:PREQUEST_HEADER):PREQUEST_HEADER; StdCall; External LibraryName;
+Function IRPMonDllRequestCopy(AHeader:PREQUEST_HEADER):PREQUEST_HEADER; StdCall; External LibraryName;
+Function IRPMonDllRequestMemoryAlloc(ASize:NativeUInt):PREQUEST_HEADER; StdCall; External LibraryName;
+Procedure IRPMonDllRequestMemoryFree(AHeader:PREQUEST_HEADER); StdCall; External LibraryName;
 
 Function IRPMonDllEmulateDriverDevices:Cardinal; StdCall; External LibraryName;
 Function IRPMonDllEmulateProcesses:Cardinal; StdCall; External LibraryName;

@@ -110,9 +110,12 @@ For I := 0 To names.Count - 1 Do
   begin
   n := names[I];
   rf := FFilterList[I];
-  tmp := TRequestFilter.GetByName(n, FFilterList);
-  If Assigned(tmp) Then
-    rf.AddNext(tmp);
+  If rf.Action = ffaPassToFilter Then
+    begin
+    tmp := TRequestFilter.GetByName(n, FFilterList);
+    If Assigned(tmp) Then
+      rf.AddNext(tmp);
+    end;
   end;
 
 names.Free;
@@ -351,15 +354,12 @@ Var
 begin
 f := FFilterList[Item.Index];
 f.Enabled := Item.Checked;
-If f.Action = ffaPassToFilter Then
+For I := 0 To FilterListVIew.Items.Count - 1 Do
   begin
-  For I := 0 To FilterListVIew.Items.Count - 1 Do
-    begin
-    If I = Item.Index Then
-      Continue;
+  If I = Item.Index Then
+    Continue;
 
-    FilterListView.Items[I].Checked := FFilterList[I].Enabled;
-    end;
+  FilterListView.Items[I].Checked := FFilterList[I].Enabled;
   end;
 end;
 
@@ -385,20 +385,7 @@ If FilterColumnComboBox.Enabled Then
   begin
   dr := Nil;
   rt := ERequestType(c.Items.Objects[c.ItemIndex]);
-  Case rt Of
-    ertUndefined: dr := TDriverRequest.Create;
-    ertIRP: dr := TIRPRequest.Create;
-    ertIRPCompletion: dr := TIRPCompleteRequest.Create;
-    ertAddDevice: dr := TAddDeviceRequest.Create;
-    ertDriverUnload: dr := TDriverUnloadRequest.Create;
-    ertFastIo: dr := TFastIoRequest.Create;
-    ertStartIo: dr := TStartIoRequest.Create;
-    ertDriverDetected: dr := TDriverDetectedRequest.Create;
-    ertDeviceDetected: dr := TDeviceDetectedRequest.Create;
-    ertFileObjectNameAssigned: dr := TFileObjectNameAssignedRequest.Create;
-    ertFileObjectNameDeleted: dr := TFileObjectNameDeletedRequest.Create;
-    end;
-
+  dr := TDriverRequest.CreatePrototype(rt);
   FilterColumnComboBox.Clear;
   If Assigned(dr) Then
     begin

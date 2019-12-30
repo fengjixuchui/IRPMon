@@ -33,6 +33,7 @@ static void _RequestInsert(PREQUEST_HEADER Header, BOOLEAN Head)
 	DEBUG_ENTER_FUNCTION("Header=0x%p; Head=%u", Header, Head);
 
 	if (Header->Flags & REQUEST_FLAG_PAGED) {
+		ASSERT(KeGetCurrentIrql() < DISPATCH_LEVEL);
 		listHead = &_pagedRequestListHead;
 		KeEnterCriticalRegion();
 		ExAcquireResourceExclusiveLite(&_pagedRequestListLock, TRUE);
@@ -137,22 +138,22 @@ NTSTATUS RequestQueueConnect()
 				status = ListDriversAndDevicesByEvents(&psRequests);
 
 			if (NT_SUCCESS(status)) {
-				psRequest = CONTAINING_RECORD(psRequests.Blink, REQUEST_HEADER, Entry);
+				psRequest = CONTAINING_RECORD(psRequests.Flink, REQUEST_HEADER, Entry);
 				while (&psRequest->Entry != &psRequests) {
 					old = psRequest;
-					psRequest = CONTAINING_RECORD(psRequest->Entry.Blink, REQUEST_HEADER, Entry);
+					psRequest = CONTAINING_RECORD(psRequest->Entry.Flink, REQUEST_HEADER, Entry);
 					RemoveEntryList(&old->Entry);
-					_RequestInsert(old, TRUE);
+					_RequestInsert(old, FALSE);
 				}
 
 				_driverSettings->ReqQueueConnected = TRUE;
 			}
 
 			if (!NT_SUCCESS(status)) {
-				psRequest = CONTAINING_RECORD(psRequests.Blink, REQUEST_HEADER, Entry);
+				psRequest = CONTAINING_RECORD(psRequests.Flink, REQUEST_HEADER, Entry);
 				while (&psRequest->Entry != &psRequests) {
 					old = psRequest;
-					psRequest = CONTAINING_RECORD(psRequest->Entry.Blink, REQUEST_HEADER, Entry);
+					psRequest = CONTAINING_RECORD(psRequest->Entry.Flink, REQUEST_HEADER, Entry);
 					RemoveEntryList(&old->Entry);
 					RequestMemoryFree(old);
 				}
@@ -202,6 +203,7 @@ VOID RequestQueueInsert(PREQUEST_HEADER Header)
 		_driverSettings->ReqQueueCollectWhenDisconnected) {
 		status = IoAcquireRemoveLock(&_removeLock, NULL);
 		if (NT_SUCCESS(status)) {
+			Header->Id = InterlockedIncrement(&_driverSettings->ReqQueueLastRequestId);
 			_RequestInsert(Header, FALSE);
 			IoReleaseRemoveLock(&_removeLock, NULL);
 		}
@@ -215,16 +217,9 @@ VOID RequestQueueInsert(PREQUEST_HEADER Header)
 }
 
 
-ULONG RequestIdReserve(void)
-{
-	return InterlockedIncrement(&_driverSettings->ReqQueueLastRequestId);
-}
-
-
 VOID RequestHeaderInit(PREQUEST_HEADER Header, PDRIVER_OBJECT DriverObject, PDEVICE_OBJECT DeviceObject, ERequesttype RequestType)
 {
 	RequestHeaderInitNoId(Header, DriverObject, DeviceObject, RequestType);
-	Header->Id = RequestIdReserve();
 
 	return;
 }
@@ -319,6 +314,8 @@ NTSTATUS RequestQueueGet(PREQUEST_HEADER *Buffer, PSIZE_T Length)
 					if (nextAvailable)
 						h->Flags |= REQUEST_FLAG_NEXT_AVAILABLE;
 
+					h->Entry.Flink = NULL;
+					h->Entry.Blink = NULL;
 					*Buffer = h;
 					status = STATUS_SUCCESS;
 				} else {

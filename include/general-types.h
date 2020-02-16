@@ -65,6 +65,7 @@ typedef enum _ERequestType {
 	ertFileObjectNameDeleted,
 	ertProcessCreated,
 	ertProcessExitted,
+	ertImageLoad,
 } ERequesttype, *PERequestPype;
 
 /** Determines the type returned in the Result union of the @link(REQUEST_HEADER) structure. */
@@ -185,6 +186,9 @@ typedef struct _REQUEST_IRP_COMPLETION {
 	ULONG MinorFunction;
 	PVOID Arguments[4];
 	PVOID FileObject;
+	ULONG_PTR RequestorProcessId;
+	UCHAR PreviousMode;
+	UCHAR RequestorMode;
 	ULONG_PTR DataSize;
 	// Data
 } REQUEST_IRP_COMPLETION, *PREQUEST_IRP_COMPLETION;
@@ -299,6 +303,49 @@ typedef struct _REQUEST_FILE_OBJECT_NAME_DELETED {
 	void *FileObject;
 } REQUEST_FILE_OBJECT_NAME_DELETED, *PREQUEST_FILE_OBJECT_NAME_DELETED;
 
+typedef enum _EImageSignatureType {
+	istNone,
+	istEmbedded,
+	istCache,
+	istCatalogCached,
+	istCatalogNotCached,
+	istCatalogHint,
+	istPackageCatalog,
+} EImageSignatureType, *PEImageSignatureType;
+
+typedef enum _EImageSigningLevel {
+	islUnchecked,
+	islUnsigned,
+	islEnterprise,
+	islDeveloper,
+	islAuthenticode,
+	islCustom2,
+	islStore,
+	islAntiMalware,
+	islMicrosoft,
+	islCustom4,
+	islCustom5,
+	islDynamicCode,
+	islWindows,
+	islCustom7,
+	islWindowsTCB,
+	islCustom6,
+} EImageSigningLevel, *PEImageSigningLevel;
+
+typedef struct _REQUEST_IMAGE_LOAD {
+	REQUEST_HEADER Header;
+	void *ImageBase;
+	size_t ImageSize;
+	void *FileObject;
+	EImageSigningLevel SignatureLevel;
+	EImageSignatureType SignatureType;
+	ULONG DataSize;
+	BOOLEAN KernelDriver;
+	BOOLEAN MappedToAllPids;
+	BOOLEAN ExtraInfo;
+	BOOLEAN PartialMap;
+} REQUEST_IMAGE_LOAD, *PREQUEST_IMAGE_LOAD;
+
 typedef struct _REQUEST_GENERAL {
 	union {
 		REQUEST_HEADER Other;
@@ -314,6 +361,7 @@ typedef struct _REQUEST_GENERAL {
 		REQUEST_PROCESS_EXITTED ProcessExitted;
 		REQUEST_FILE_OBJECT_NAME_ASSIGNED FileObjectNameAssigned;
 		REQUEST_FILE_OBJECT_NAME_DELETED FileObjectNameDeleted;
+		REQUEST_IMAGE_LOAD ImageLoad;
 	} RequestTypes;
 } REQUEST_GENERAL, *PREQUEST_GENERAL;
 
@@ -382,6 +430,9 @@ typedef struct _HOOKED_DRIVER_UMINFO {
 	    driver. If set to TRUE, the information about the events is stored in the
 		IRPMon Event Queue. */
 	BOOLEAN MonitoringEnabled;
+	/** If set to TRUE, device extension-based hooks are used
+	    instead of IRP ones. */
+	BOOLEAN DeviceExtensionHooks;
 	DRIVER_MONITOR_SETTINGS MonitorSettings;
 	/** Number of devices, monitored by the IRPMon driver (not including the new ones). */
 	ULONG NumberOfHookedDevices;
@@ -409,6 +460,8 @@ typedef struct _IRPMNDRV_SETTINGS {
 	BOOLEAN DriverSnapshotEventsCollect;
 	BOOLEAN ProcessEmulateOnConnect;
 	BOOLEAN DriverSnapshotOnConnect;
+	ULONG DataStripThreshold;
+	BOOLEAN StripData;
 } IRPMNDRV_SETTINGS, *PIRPMNDRV_SETTINGS;
 
 

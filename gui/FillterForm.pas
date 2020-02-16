@@ -43,6 +43,10 @@ Type
     NextFilterComboBox: TComboBox;
     UpButton: TButton;
     DownButton: TButton;
+    Label6: TLabel;
+    NameEdit: TEdit;
+    ApplyButton: TButton;
+    EphemeralCheckBox: TCheckBox;
     Procedure FormCreate(Sender: TObject);
     procedure FilterTypeComboBoxChange(Sender: TObject);
     procedure FilterColumnComboBoxChange(Sender: TObject);
@@ -82,6 +86,7 @@ Implementation
 {$R *.DFM}
 
 Uses
+  UITypes,
   IniFiles,
   IRPMonDll, IRPRequest, FastIoRequest, Utils,
   FileObjectNameXxxRequest, XXXDetectedRequests;
@@ -148,7 +153,7 @@ If NextFilterComboBox.Visible Then
     If (Assigned(currentRF)) And (rf.Name = currentRF.Name) Then
       Continue;
 
-    If rf.HasPredecessor Then
+    If (rf.HasPredecessor) And (Assigned(currentRF)) And (currentRF.NextFilter = rf) Then
       Continue;
 
     If (Assigned(selectedRF)) And (selectedRF.Name = rf.Name) Then
@@ -169,6 +174,7 @@ begin
 L := FilterListView.Selected;
 If Assigned(L) Then
   begin
+  index2 := -1;
   If Sender = UpButton Then
     index2 := L.Index - 1
   Else If Sender = DownButton Then
@@ -264,6 +270,9 @@ With FilterListView.Canvas Do
        Font.Color := ClBlack
     Else Font.Color := ClWhite;
     end;
+
+  If f.Ephemeral Then
+    Font.Style := Font.Style + [fsItalic];
   end;
 
 DefaultDraw := True;
@@ -307,6 +316,7 @@ L := FilterListView.Selected;
 If Assigned(L) Then
   begin
   f := FFilterList[L.Index];
+  NameEdit.Text := f.Name;
   FilterTypeComboBox.ItemIndex := Ord(f.RequestType);
   FilterTypeComboBoxChange(FilterTypeComboBox);
   FilterColumnComboBox.ItemIndex := FilterColumnComboBox.Items.IndexOf(f.ColumnName);
@@ -338,6 +348,7 @@ If Assigned(L) Then
   HighlightColorColorBox.Selected := f.HighlightColor;
   NegateCheckBox.Checked := f.Negate;
   EnabledCheckBox.Checked := f.Enabled;
+  EphemeralCheckBox.Checked := f.Ephemeral;
   end;
 end;
 
@@ -367,6 +378,7 @@ Procedure TFilterFrm.FilterListViewSelectItem(Sender: TObject; Item: TListItem;
   Selected: Boolean);
 begin
 DeleteButton.Enabled := (Assigned(Item)) And (Selected);
+ApplyButton.Enabled := (Assigned(Item)) And (Selected);
 UpButton.Enabled := ((Assigned(Item)) And (Selected) And (Item.Index > 0));
 DownButton.Enabled := ((Assigned(Item)) And (Selected) And (Item.Index < FilterListView.Items.Count - 1));
 end;
@@ -383,7 +395,6 @@ c := (Sender As TComboBox);
 EnableComboBox(fctColumn, c.ItemIndex <> -1);
 If FilterColumnComboBox.Enabled Then
   begin
-  dr := Nil;
   rt := ERequestType(c.Items.Objects[c.ItemIndex]);
   dr := TDriverRequest.CreatePrototype(rt);
   FilterColumnComboBox.Clear;
@@ -465,13 +476,10 @@ end;
 
 Procedure TFilterFrm.OkButtonClick(Sender: TObject);
 Var
-  iniFile : TIniFile;
   fileName : WideString;
 begin
 fileName := ExtractFilePath(Application.ExeName) + 'filters.ini';
-iniFile := TIniFIle.Create(fileName);
-FCancelled := Not TRequestFilter.SaveList(iniFile, FFilterList);
-iniFile.Free;
+FCancelled := Not TRequestFilter.SaveList(fileName, FFilterList);
 If Not FCancelled Then
   begin
   FFilterList.OwnsObjects := False;
@@ -483,10 +491,12 @@ Procedure TFilterFrm.AddButtonClick(Sender: TObject);
 Var
   I : Integer;
   L : TListItem;
+  modifyFilter : Boolean;
   rt : ERequestType;
   ct : ERequestListModelColumnType;
   op : ERequestFilterOperator;
   f : TRequestFilter;
+  existingFilter : TRequestFilter;
   v : WideString;
   fa : EFilterAction;
   hc : TColor;
@@ -495,6 +505,15 @@ Var
   newName : WideString;
 begin
 f := Nil;
+L := Nil;
+modifyFilter := (Sender = ApplyButton);
+If modifyFilter Then
+  begin
+  L := FilterListView.Selected;
+  If Assigned(L) Then
+    f := FFilterList[L.Index];
+  end;
+
 passTarget := Nil;
 Try
   If FilterTypeComboBox.ItemIndex = -1 Then
@@ -541,26 +560,29 @@ Try
       end;
     end;
 
-  newName :=
-    FilterTypeComboBox.Text + '-' +
-    FilterColumnComboBox.Text + '-' +
-    FilterOperatorComboBox.Text + '-' +
-    FilterValueComboBox.Text + '-' +
-    FilterActionComboBox.Text;
-
-  f := TRequestFilter.GetByName(newName, FFilterList);
-  If Assigned(f) Then
+  newName := NameEdit.Text;
+  If newName <> '' Then
     begin
-    ErrorMessage('The filter is already present in the list');
-    f := Nil;
-    Exit;
+    existingFilter := TRequestFilter.GetByName(newName, FFilterList);
+    If (Assigned(existingFilter)) And
+        ((Not modifyFilter) Or (existingFilter <> f)) Then
+      begin
+      ErrorMessage('The filter is already present in the list');
+      Exit;
+      end;
     end;
 
-  f := TRequestFilter.NewInstance(rt);
-  If Not Assigned(f) Then
-    Exit;
+  If Not modifyFilter Then
+    begin
+    f := TRequestFilter.NewInstance(rt);
+    If Not Assigned(f) Then
+      Exit;
+    end;
 
   f.Name := newName;
+  If (Not modifyFilter) Or (f.Name = '') Then
+    f.GenerateName(FFilterList);
+
   If Not f.SetCondition(ct, op, v) Then
     begin
     ErrorMessage('Unable to set filter condition, bad value of the constant');
@@ -585,13 +607,18 @@ Try
       end;
     end;
 
-  FFilterList.Add(f);
-  L := FilterListVIew.Items.Add;
+  If Not modifyFilter Then
+    begin
+    FFilterList.Add(f);
+    L := FilterListVIew.Items.Add;
+    end;
+
   f.Enabled := EnabledCheckBox.Checked;
+  f.Ephemeral := EphemeralCheckBox.Checked;
   FilterListViewData(FilterListView, L);
   f := Nil;
 Finally
-  If Assigned(f) Then
+  If (Not modifyFilter) And (Assigned(f)) Then
     f.Free;
   end;
 end;

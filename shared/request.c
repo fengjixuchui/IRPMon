@@ -78,6 +78,7 @@ size_t RequestGetSize(const REQUEST_HEADER *Header)
 	const REQUEST_FILE_OBJECT_NAME_ASSIGNED *ar = NULL;
 	const REQUEST_FILE_OBJECT_NAME_DELETED *dr = NULL;
 	const REQUEST_PROCESS_CREATED *pcr = CONTAINING_RECORD(Header, REQUEST_PROCESS_CREATED, Header);
+	const REQUEST_IMAGE_LOAD *ilr = NULL;
 
 	switch (Header->Type) {
 		case ertIRP:
@@ -123,6 +124,10 @@ size_t RequestGetSize(const REQUEST_HEADER *Header)
 			break;
 		case ertProcessExitted:
 			ret = sizeof(REQUEST_PROCESS_EXITTED);
+			break;
+		case ertImageLoad:
+			ilr = CONTAINING_RECORD(Header, REQUEST_IMAGE_LOAD, Header);
+			ret = sizeof(REQUEST_IMAGE_LOAD) + ilr->DataSize;
 			break;
 	}
 
@@ -243,7 +248,7 @@ PREQUEST_HEADER RequestDecompress(const REQUEST_HEADER *Header)
 	newSize = oldSize + charCount;
 	newRequest = RequestMemoryAlloc(newSize);
 	if (newRequest != NULL) {
-		memcpy(newRequest, Header, oldSize);
+		memcpy(newRequest, Header, oldSize - charCount);
 		target = (wchar_t *)((unsigned char *)newRequest + newSize - charCount*sizeof(wchar_t));
 		if (charCount > 0) {
 			switch (Header->Type) {

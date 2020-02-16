@@ -881,6 +881,10 @@ object MainFrm: TMainFrm
     TabOrder = 0
     object RequestTabSheet: TTabSheet
       Caption = 'Requests'
+      ExplicitLeft = 0
+      ExplicitTop = 0
+      ExplicitWidth = 0
+      ExplicitHeight = 0
       object RequestListView: TListView
         Left = 0
         Top = 0
@@ -901,6 +905,10 @@ object MainFrm: TMainFrm
       Caption = 'Data Parsers'
       ImageIndex = 1
       OnShow = DataParsersTabSheetShow
+      ExplicitLeft = 0
+      ExplicitTop = 0
+      ExplicitWidth = 0
+      ExplicitHeight = 0
       object DataParsersListView: TListView
         Left = 0
         Top = 0
@@ -1002,10 +1010,6 @@ object MainFrm: TMainFrm
       object N6: TMenuItem
         Caption = '-'
       end
-      object SortbyIDMenuItem: TMenuItem
-        Caption = 'Sort by ID'
-        OnClick = SortbyIDMenuItemClick
-      end
       object ClearMenuItem: TMenuItem
         Caption = 'Clear'
         OnClick = ClearMenuItemClick
@@ -1027,6 +1031,14 @@ object MainFrm: TMainFrm
       object HideExcludedRequestsMenuItem: TMenuItem
         Caption = 'Hide excluded requests'
         OnClick = HideExcludedRequestsMenuItemClick
+      end
+      object CompressMenuItem: TMenuItem
+        Caption = 'Compress'
+        OnClick = CompressMenuItemClick
+      end
+      object IgnoreLogFileHeadersMenuItem: TMenuItem
+        Caption = 'Ignore log file headers'
+        OnClick = IgnoreLogFileHeadersMenuItemClick
       end
     end
     object DriverMenuItem: TMenuItem
@@ -1077,6 +1089,16 @@ object MainFrm: TMainFrm
         Caption = 'Driver snapshot on connect'
         OnClick = DriverSettingsMenuItemClick
       end
+      object StripRequestDataMenuItem: TMenuItem
+        Tag = 7
+        Caption = 'Strip request data'
+        OnClick = DriverSettingsMenuItemClick
+      end
+      object MaxRequestDataSizeMenuItem: TMenuItem
+        Tag = 8
+        Caption = 'Max request data size'
+        OnClick = DriverSettingsMenuItemClick
+      end
     end
     object ColumnsMenuItem: TMenuItem
       Caption = 'Columns'
@@ -1123,8 +1145,32 @@ object MainFrm: TMainFrm
       OnClick = PopupFilterClick
     end
     object RPExcludeMenuItem: TMenuItem
-      Caption = #203'xclude'
+      Caption = 'Exclude'
       OnClick = PopupFilterClick
+    end
+    object RPIncludeAllMenuItem: TMenuItem
+      Caption = 'Include'
+      OnClick = PopupFilterClick
+    end
+    object RPHighlightAllMenuItem: TMenuItem
+      Caption = 'Highlight'
+      OnClick = PopupFilterClick
+    end
+    object RPExcludeAllMenuItem: TMenuItem
+      Caption = 'Exclude'
+      OnClick = PopupFilterClick
+    end
+    object CopyMenuItem: TMenuItem
+      Caption = 'Copy'
+      OnClick = PopupFilterClick
+    end
+    object CopyVisibleColumnsMenuItem: TMenuItem
+      Caption = 'Copy visible columns'
+      OnClick = CopyVisibleColumnsMenuItemClick
+    end
+    object CopyWholeLineMenuItem: TMenuItem
+      Caption = 'Copy whole line'
+      OnClick = CopyVisibleColumnsMenuItemClick
     end
   end
   object HighlightColorDialog: TColorDialog

@@ -429,11 +429,11 @@ opt := (AOptions And $FFFFFF);
 disp := (AOptions Shr 24);
 Case disp Of
   FILE_SUPERSEDE : Result := 'Supersede';
-  FILE_CREATE : Result := 'Supersede';
-  FILE_OPEN : Result := 'Supersede';
-  FILE_OPEN_IF : Result := 'Supersede';
-  FILE_OVERWRITE : Result := 'Supersede';
-  FILE_OVERWRITE_IF : Result := 'Supersede';
+  FILE_CREATE : Result := 'Create';
+  FILE_OPEN : Result := 'Open';
+  FILE_OPEN_IF : Result := 'OpenIf';
+  FILE_OVERWRITE : Result := 'Overwrite';
+  FILE_OVERWRITE_IF : Result := 'OverwriteIf';
   end;
 
 If ((opt And FILE_DIRECTORY_FILE) <> 0) THen
@@ -549,7 +549,6 @@ end;
 
 Function TZeroArgIRPRequest.GetColumnValue(AColumnType:ERequestListModelColumnType; Var AResult:WideString):Boolean;
 begin
-Result := True;
 Case AColumnType Of
   rlmctArg1,
   rlmctArg2,
@@ -806,7 +805,6 @@ end;
 
 Function TPowerSequenceRequest.GetColumnValue(AColumnType:ERequestListModelColumnType; Var AResult:WideString):Boolean;
 begin
-Result := True;
 Case AColumnType Of
   rlmctArg1,
   rlmctArg2,
@@ -845,7 +843,6 @@ end;
 
 Function TCloseCleanupRequest.GetColumnValue(AColumnType:ERequestListModelColumnType; Var AResult:WideString):Boolean;
 begin
-Result := True;
 Case AColumnType Of
   rlmctArg1,
   rlmctArg2,

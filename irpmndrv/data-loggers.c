@@ -3,6 +3,7 @@
 #include "preprocessor.h"
 #include "allocator.h"
 #include "utils.h"
+#include "driver-settings.h"
 #include "data-loggers.h"
 
 
@@ -11,9 +12,8 @@
 /*               GLOBAL VARIABLES                                       */
 /************************************************************************/
 
-static ULONG _threshold = 1024;
-static BOOLEAN _stripLargeData = TRUE;
 
+static PIRPMNDRV_SETTINGS _driverSettings = NULL;
 
 /************************************************************************/
 /*                    HELPER FUNCTIONS                                  */
@@ -71,16 +71,30 @@ static SIZE_T _DeviceRelationSize(const DEVICE_RELATIONS *R)
 /************************************************************************/
 
 
-void IRPDataLogger(PIRP Irp, PIO_STACK_LOCATION IrpStack, BOOLEAN Completion, PDATA_LOGGER_RESULT Result)
+void IRPDataLogger(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpStack, BOOLEAN Completion, PDATA_LOGGER_RESULT Result)
 {
 	KPROCESSOR_MODE mode;
 	KPROCESSOR_MODE reqMode;
-	DEBUG_ENTER_FUNCTION("Irp=0x%p; IrpStack=0x%p; Completion=%u; Result=0x%p", Irp, IrpStack, Completion, Result);
+	DEBUG_ENTER_FUNCTION("DeviceObject=0x%p; Irp=0x%p; IrpStack=0x%p; Completion=%u; Result=0x%p", DeviceObject, Irp, IrpStack, Completion, Result);
 
 	reqMode = Irp->RequestorMode;
 	mode = ExGetPreviousMode();
 	memset(Result, 0, sizeof(DATA_LOGGER_RESULT));
 	switch (IrpStack->MajorFunction) {
+		case IRP_MJ_CREATE: {
+			if (!Completion && IrpStack->Parameters.Create.SecurityContext != NULL) {
+				SIZE_T bufSize = 0;
+				POOL_TYPE pt = (KeGetCurrentIrql() < DISPATCH_LEVEL) ? PagedPool : NonPagedPool;
+
+				bufSize = sizeof(IrpStack->Parameters.Create.SecurityContext->DesiredAccess);
+				Result->Buffer = HeapMemoryAlloc(pt, bufSize);
+				if (Result->Buffer != NULL) {
+					Result->BufferAllocated = TRUE;
+					Result->BufferSize = bufSize;
+					memcpy(Result->Buffer, &IrpStack->Parameters.Create.SecurityContext->DesiredAccess, Result->BufferSize);
+				}
+			}
+		} break;
 		case IRP_MJ_READ: {
 			if (Completion) {
 				if (Irp->MdlAddress != NULL) {
@@ -221,21 +235,22 @@ void IRPDataLogger(PIRP Irp, PIO_STACK_LOCATION IrpStack, BOOLEAN Completion, PD
 		case IRP_MJ_DIRECTORY_CONTROL:
 			switch (IrpStack->MinorFunction) {
 				case IRP_MN_QUERY_DIRECTORY:
-					Result->Buffer = Irp->UserBuffer;
-					Result->BufferSize = Irp->IoStatus.Information;
 					if (!Completion) {
-						if (reqMode == UserMode &&
-							Result->BufferSize > 0) {
-							__try {
-								ProbeForRead(Result->Buffer, Result->BufferSize, 1);
-							} __except (EXCEPTION_EXECUTE_HANDLER) {
-								DbgPrintEx(DPFLTR_DEFAULT_ID, DPFLTR_ERROR_LEVEL, "DANGEROUS BUFFER: Irp=0x%p; IrpStack=0x%p; Buffer=0x%p; Size=%zu\n", Irp, IrpStack, Result->Buffer, Result->BufferSize);
-								__debugbreak();
+						PUNICODE_STRING fileMask = NULL;
+						
+						fileMask = IrpStack->Parameters.QueryDirectory.FileName;
+						if (fileMask != NULL) {
+							Result->Buffer = HeapMemoryAllocNonPaged(sizeof(UNICODE_STRING) + fileMask->Length);
+							if (Result->Buffer != NULL) {
+								Result->BufferAllocated = TRUE;
+								Result->BufferSize = sizeof(UNICODE_STRING) + fileMask->Length;
+								*(PUNICODE_STRING)(Result->Buffer) = *fileMask;
+								memcpy((unsigned char *)Result->Buffer + sizeof(UNICODE_STRING), fileMask->Buffer, fileMask->Length);
 							}
 						}
-
-						Result->Buffer = NULL;
-						Result->BufferSize = 0;
+					} else {
+						Result->Buffer = Irp->UserBuffer;
+						Result->BufferSize = Irp->IoStatus.Information;
 					}
 					break;
 				case IRP_MN_NOTIFY_CHANGE_DIRECTORY:
@@ -247,16 +262,35 @@ void IRPDataLogger(PIRP Irp, PIO_STACK_LOCATION IrpStack, BOOLEAN Completion, PD
 					break;
 			}
 			break;
-		case IRP_MJ_QUERY_EA:
-			if (Completion) {
-				Result->Buffer = Irp->AssociatedIrp.SystemBuffer;
-				Result->BufferSize = Irp->IoStatus.Information;
-			}
-			break;
-		case IRP_MJ_SET_EA:
+		case IRP_MJ_QUERY_EA: {
 			if (!Completion) {
-				Result->Buffer = Irp->AssociatedIrp.SystemBuffer;
-				Result->BufferSize = IrpStack->Parameters.SetEa.Length;
+				Result->Buffer = IrpStack->Parameters.QueryEa.EaList;
+				Result->BufferSize = IrpStack->Parameters.QueryEa.EaListLength;
+			} else {
+				if (DeviceObject != NULL) {
+					if (DeviceObject->Flags & DO_BUFFERED_IO)
+						Result->Buffer = Irp->AssociatedIrp.SystemBuffer;
+					else if (DeviceObject->Flags & DO_DIRECT_IO) {
+						Result->BufferMdl = Irp->MdlAddress;
+						Result->Buffer = MmGetSystemAddressForMdlSafe(Result->BufferMdl, NormalPagePriority);
+					} else Result->Buffer = Irp->UserBuffer;
+
+					Result->BufferSize = Irp->IoStatus.Information;
+				}
+			}
+		} break;
+		case IRP_MJ_SET_EA:
+			if (Completion) {
+				if (DeviceObject != NULL) {
+					if (DeviceObject->Flags & DO_BUFFERED_IO)
+						Result->Buffer = Irp->AssociatedIrp.SystemBuffer;
+					else if (DeviceObject->Flags & DO_DIRECT_IO) {
+						Result->BufferMdl = Irp->MdlAddress;
+						Result->Buffer = MmGetSystemAddressForMdlSafe(Result->BufferMdl, NormalPagePriority);
+					} else Result->Buffer = Irp->UserBuffer;
+
+					Result->BufferSize = IrpStack->Parameters.SetEa.Length;
+				}
 			}
 			break;
 		case IRP_MJ_PNP: {
@@ -324,8 +358,8 @@ void IRPDataLogger(PIRP Irp, PIO_STACK_LOCATION IrpStack, BOOLEAN Completion, PD
 			break;
 	}
 
-	if (_stripLargeData && Result->BufferSize > _threshold) {
-		Result->BufferSize = _threshold;
+	if (_driverSettings->StripData && Result->BufferSize > _driverSettings->DataStripThreshold) {
+		Result->BufferSize = _driverSettings->DataStripThreshold;
 		Result->Stripped = TRUE;
 	}
 
@@ -352,6 +386,35 @@ void DataLoggerResultRelease(PDATA_LOGGER_RESULT Result)
 
 	if (Result->BufferAllocated)
 		HeapMemoryFree(Result->Buffer);
+
+	DEBUG_EXIT_FUNCTION_VOID();
+	return;
+}
+
+
+/************************************************************************/
+/*                INITIALIZATION AND FINALIZATION                       */
+/************************************************************************/
+
+
+NTSTATUS DataLoggerModuleInit(PDRIVER_OBJECT DriverObject, PUNICODE_STRING RegistryPath, PVOID Context)
+{
+	NTSTATUS status = STATUS_UNSUCCESSFUL;
+	DEBUG_ENTER_FUNCTION("DriverObject=0x%p; RegistryPath=\"%wZ\"; Context=0x%p", DriverObject, RegistryPath, Context);
+
+	_driverSettings = DriverSettingsGet();
+	status = STATUS_SUCCESS;
+
+	DEBUG_EXIT_FUNCTION("0x%x", status);
+	return status;
+}
+
+
+void DataLoggerModuleFinit(PDRIVER_OBJECT DriverObject, PUNICODE_STRING RegistryPath, PVOID Context)
+{
+	DEBUG_ENTER_FUNCTION("DriverObject=0x%p; RegistryPath=\"%wZ\"; Context=0x%p", DriverObject, RegistryPath, Context);
+
+	_driverSettings = NULL;
 
 	DEBUG_EXIT_FUNCTION_VOID();
 	return;

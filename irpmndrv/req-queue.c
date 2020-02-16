@@ -8,6 +8,9 @@
 #include "driver-settings.h"
 #include "req-queue.h"
 
+#undef DEBUG_TRACE_ENABLED
+#define DEBUG_TRACE_ENABLED 0
+
 
 /************************************************************************/
 /*                            GLOBAL VARIABLES                          */
@@ -143,6 +146,7 @@ NTSTATUS RequestQueueConnect()
 					old = psRequest;
 					psRequest = CONTAINING_RECORD(psRequest->Entry.Flink, REQUEST_HEADER, Entry);
 					RemoveEntryList(&old->Entry);
+					old->Id = InterlockedIncrement(&_driverSettings->ReqQueueLastRequestId);
 					_RequestInsert(old, FALSE);
 				}
 

@@ -156,21 +156,12 @@ Type
     Function GetColumnValue(AColumnType:ERequestListModelColumnType; Var AResult:WideString):Boolean; Virtual;
     Function GetColumnValueRaw(AColumnType:ERequestListModelColumnType; Var AValue:Pointer; Var AValueSize:Cardinal):Boolean; Virtual;
     Procedure SaveToStream(AStream:TStream; AParsers:TObjectList<TDataParser>; ABinary:Boolean = False; ACompress:Boolean = False); Virtual;
-    Procedure SaveToFile(AFileName:WideString; AParsers:TObjectList<TDataParser>; ABinary:Boolean = False); Virtual;
+    Procedure SaveToFile(AFileName:WideString; AParsers:TObjectList<TDataParser>; ABinary:Boolean = False; ACompress:Boolean = False); Virtual;
 
     Class Function CreatePrototype(AType:ERequestType):TDriverRequest;
 
     Property Highlight : Boolean Read FHighlight Write FHighlight;
     Property HighlightColor : Cardinal Read FHighlightColor Write FHighlightColor;
-  end;
-
-  TDriverRequestComparer = Class (TComparer<TDriverRequest>)
-  Public
-{$IFDEF FPC}
-    Function Compare(Constref Left, Right:TDriverRequest):Integer; Override;
-{$ELSE}
-    Function Compare(Const Left, Right:TDriverRequest):Integer; Override;
-{$ENDIF}
   end;
 
   TDriverUnloadRequest = Class (TDriverRequest)
@@ -192,6 +183,9 @@ Type
     FIOSBInformation : NativeUInt;
     FMajorFunction : Cardinal;
     FMinorFunction : Cardinal;
+    FRequestorProcessId : NativeUInt;
+    FPreviousMode : Byte;
+    FRequestorMode : Byte;
   Public
     Constructor Create(Var ARequest:REQUEST_IRP_COMPLETION); Overload;
 
@@ -204,6 +198,9 @@ Type
     Property IOSBInformation : NativeUInt Read FIOSBInformation;
     Property MajorFunction : Cardinal Read FMajorFunction;
     Property MinorFunction : Cardinal Read FMinorFunction;
+    Property RequestorProcessId : NativeUInt Read FRequestorProcessId;
+    Property PreviousMode : Byte Read FPreviousMode;
+    Property RequestorMode : Byte Read FRequestorMode;
   end;
 
   TStartIoRequest = Class (TDriverRequest)
@@ -236,15 +233,14 @@ Type
       Constructor Create; Reintroduce;
       Destructor Destroy; Override;
       Function RefreshMaps:Cardinal;
-      Procedure Sort;
 
       Procedure Clear; Override;
       Function RowCount : Cardinal; Override;
       Function Update:Cardinal; Override;
       Procedure SaveToStream(AStream:TStream; ABinary:Boolean = False; ACompress:Boolean = False);
-      Procedure SaveToFile(AFileName:WideString; ABinary:Boolean = False);
-      Procedure LoadFromStream(AStream:TStream);
-      Procedure LoadFromFile(AFileName:WideString);
+      Procedure SaveToFile(AFileName:WideString; ABinary:Boolean = False; ACompress:Boolean = False);
+      Procedure LoadFromStream(AStream:TStream; ARequireHeader:Boolean = True);
+      Procedure LoadFromFile(AFileName:WideString; ARequireHeader:Boolean = True);
       Procedure Reevaluate;
 
       Property FilterDisplayOnly : Boolean Read FFilterDisplayOnly Write SetFilterDisplayOnly;
@@ -258,18 +254,8 @@ Implementation
 Uses
   SysUtils, NameTables, IRPRequest, FastIoRequest,
   XXXDetectedRequests, FileObjectNameXXXRequest,
-  ProcessXXXRequests, Utils;
+  ProcessXXXRequests, Utils, BinaryLogHeader, ImageLoadRequest;
 
-(** TDriverRequestComparer **)
-
-{$IFDEF FPC}
-Function TDriverRequestComparer.Compare(Constref Left, Right:TDriverRequest):Integer;
-{$ELSE}
-Function TDriverRequestComparer.Compare(Const Left, Right:TDriverRequest):Integer;
-{$ENDIF}
-begin
-Result := Integer(Left.Id - Right.Id);
-end;
 
 (** TDriverRequest **)
 
@@ -288,6 +274,7 @@ Case AType Of
   ertFileObjectNameDeleted : Result := TFileObjectNameDeletedRequest.Create;
   ertProcessCreated : Result := TProcessCreatedRequest.Create;
   ertProcessExitted : Result := TProcessExittedRequest.Create;
+  ertImageLoad : Result := TImageLoadRequest.Create;
   Else Result := TDriverRequest.Create;
   end;
 end;
@@ -378,13 +365,13 @@ Else begin
   end;
 end;
 
-Procedure TDriverRequest.SaveToFile(AFileName: WideString; AParsers:TObjectList<TDataParser>; ABinary:Boolean = False);
+Procedure TDriverRequest.SaveToFile(AFileName: WideString; AParsers:TObjectList<TDataParser>; ABinary:Boolean = False; ACompress:Boolean = False);
 Var
   F : TFileStream;
 begin
 F := TFileStream.Create(AFileName, fmCreate Or fmOpenWrite);
 Try
-  SaveToStream(F, AParsers, ABinary);
+  SaveToStream(F, AParsers, ABinary, ACompress);
 Finally
   F.Free;
   end;
@@ -539,7 +526,6 @@ end;
 
 Function TDriverUnloadRequest.GetColumnValue(AColumnType:ERequestListModelColumnType; Var AResult:WideString):Boolean;
 begin
-Result := True;
 Case AColumnType Of
   rlmctDeviceObject,
   rlmctDeviceName,
@@ -571,6 +557,9 @@ FIOSBStatus := ARequest.CompletionStatus;
 FIOSBInformation := ARequest.CompletionInformation;
 FMajorFunction := ARequest.MajorFunction;
 FMinorFunction := ARequest.MinorFunction;
+FPreviousMode := ARequest.PreviousMode;
+FRequestorMode := ARequest.RequestorMode;
+FRequestorProcessId := ARequest.RequestorProcessId;
 SetFileObject(ARequest.FileObject);
 end;
 
@@ -596,6 +585,18 @@ Case AColumnType Of
     AValue := @FMinorFunction;
     AValueSize := SizeOf(FMinorFunction);
     end;
+  rlmctPreviousMode: begin
+    AValue := @FPreviousMode;
+    AValueSize := SizeOf(FPreviousMode);
+    end;
+  rlmctRequestorMode: begin
+    AValue := @FRequestorMode;
+    AValueSize := SizeOf(FRequestorMode);
+    end;
+  rlmctRequestorPID: begin
+    AValue := @FRequestorProcessId;
+    AValueSize := SizeOf(FRequestorProcessId);
+    end;
   Else Result := Inherited GetColumnValueRaw(AColumnType, AValue, AValueSize);
   end;
 end;
@@ -610,6 +611,9 @@ Case AColumnType Of
   rlmctIOSBStatusValue : AResult := Format('0x%x', [FIOSBStatus]);
   rlmctIOSBStatusConstant : AResult := Format('%s', [NTSTATUSToString(FIOSBStatus)]);
   rlmctIOSBInformation : AResult := Format('0x%p', [Pointer(IOSBInformation)]);
+  rlmctPreviousMode: AResult := AccessModeToString(FPreviousMode);
+  rlmctRequestorMode: AResult := AccessModeToString(FRequestorMode);
+  rlmctRequestorPID : AResult := Format('%d', [FRequestorProcessId]);
   Else Result := Inherited GetColumnValue(AColumnType, AResult);
   end;
 end;
@@ -726,8 +730,13 @@ If Assigned(UpdateRequest) Then
 
           FProcessMap.Add(Cardinal(dr.DriverObject), dr.DriverName);
           end;
-        ertProcessExitted : begin
-          dr := TProcessExittedRequest.Create(tmpUR.ProcessExitted);
+        ertProcessExitted : dr := TProcessExittedRequest.Create(tmpUR.ProcessExitted);
+        ertImageLoad : begin
+          dr := TImageLoadRequest.Create(tmpUR.ImageLoad);
+          If FFileMap.ContainsKey(dr.FileObject) Then
+            FFileMap.Remove(dr.FileObject);
+
+          FFileMap.Add(dr.FileObject, dr.FileName);
           end;
         Else dr := TDriverRequest.Create(tmpUR.Header);
         end;
@@ -844,9 +853,16 @@ end;
 
 Procedure TRequestListModel.SaveToStream(AStream:TStream; ABinary:Boolean = False; ACompress:Boolean = False);
 Var
+  bh : TBinaryLogHeader;
   I : Integer;
   dr : TDriverRequest;
 begin
+If ABinary Then
+  begin
+  TBinaryLogHeader.Fill(bh);
+  AStream.Write(bh, SizeOf(bh));
+  end;
+
 For I := 0 To RowCount - 1 Do
   begin
   dr := _Item(I);
@@ -854,25 +870,54 @@ For I := 0 To RowCount - 1 Do
   end;
 end;
 
-Procedure TRequestListModel.SaveToFile(AFileName:WideString; ABinary:Boolean = False);
+Procedure TRequestListModel.SaveToFile(AFileName:WideString; ABinary:Boolean = False; ACompress:Boolean = False);
 Var
   F : TFileStream;
 begin
 F := TFileStream.Create(AFileName, fmCreate Or fmOpenWrite);
 Try
-  SaveToStream(F, ABinary);
+  SaveToStream(F, ABinary, ACompress);
 Finally
   F.Free;
   end;
 end;
 
-Procedure TRequestListModel.LoadFromStream(AStream:TStream);
+Procedure TRequestListModel.LoadFromStream(AStream:TStream; ARequireHeader:Boolean = True);
 Var
   reqSize : Cardinal;
   rg : PREQUEST_GENERAL;
-  tmp : PREQUEST_GENERAL;
   l : TList<PREQUEST_GENERAL>;
+  bh : TBinaryLogHeader;
+  oldPos : Int64;
+  invalidHeader : Boolean;
 begin
+invalidHeader := False;
+oldPos := AStream.Position;
+AStream.Read(bh, SizeOf(bh));
+If Not TBinaryLogHeader.SignatureValid(bh) Then
+  begin
+  invalidHeader := True;
+  If ARequireHeader Then
+    Raise Exception.Create('Invalid log file signature');
+  end;
+
+If Not TBinaryLogHeader.VersionSupported(bh) Then
+  begin
+  invalidHeader := True;
+  If ARequireHeader Then
+    Raise Exception.Create('Log file version not supported');
+  end;
+
+If Not TBinaryLogHeader.ArchitectureSupported(bh) Then
+  begin
+  invalidHeader := True;
+  If ARequireHeader Then
+    Raise Exception.Create('The log file and application "bitness"  differ.'#13#10'Use other application version');
+  end;
+
+If invalidHeader Then
+  AStream.Position := oldPos;
+
 l := TList<PREQUEST_GENERAL>.Create;
 While AStream.Position < AStream.Size Do
   begin
@@ -890,27 +935,16 @@ For rg In l Do
 l.Free;
 end;
 
-Procedure TRequestListModel.LoadFromFile(AFileName:WideString);
+Procedure TRequestListModel.LoadFromFile(AFileName:WideString; ARequireHeader:Boolean = True);
 Var
   F : TFileStream;
 begin
 F := TFileStream.Create(AFileName, fmOpenRead);
 Try
-  LoadFromStream(F);
+  LoadFromStream(F, ARequireHeader);
 Finally
   F.Free;
   end;
-end;
-
-Procedure TRequestListModel.Sort;
-Var
-  c : TDriverRequestComparer;
-begin
-c := TDriverRequestComparer.Create;
-FRequests.Sort(c);
-c.Free;
-If Assigned(Displayer) Then
-  Displayer.Invalidate;
 end;
 
 Procedure TRequestListModel.OnAdvancedCustomDrawItemCallback(Sender: TCustomListView; Item: TListItem; State: TCustomDrawState; Stage: TCustomDrawStage; var DefaultDraw: Boolean);

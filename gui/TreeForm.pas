@@ -34,6 +34,7 @@ Type
     StornoButton: TButton;
     OkButton: TButton;
     DataMenuItem: TMenuItem;
+    DeviceExtensionMenuItem: TMenuItem;
     Procedure FormCreate(Sender: TObject);
     procedure FormClose(Sender: TObject; var Action: TCloseAction);
     procedure DeviceTreeViewPopupMenuPopup(Sender: TObject);
@@ -123,10 +124,8 @@ Var
   pdei : PPIRPMON_DEVICE_INFO;
   dei : PIRPMON_DEVICE_INFO;
   tnDriver : TTreeNode;
-  tndevice : TTreeNode;
   hdr : TDriverHookObject;
   hde : TDeviceHookObject;
-  hdeTmp : TDeviceHookObject;
   p, p2 : TPair<Pointer, TDeviceHookObject>;
   isLowest : Boolean;
 begin
@@ -247,10 +246,11 @@ If err = ERROR_SUCCESS Then
       drh.ObjectId := tmp.ObjectId;
       drh.Hooked := True;
       drh.Settings := tmp.MonitorSettings;
-
+      drh.DeviceExtensionHook := tmp.DeviceExtensionHooks;
       cdr := TDriverHookObject.Create(drh.Address, PWideChar(drh.Name));
       cdr.Hooked := True;
       cdr.Settings := drh.Settings;
+      cdr.DeviceExtensionHook := drh.DeviceExtensionHook;
       FCurrentlyHookedDrivers.Add(cdr);
 
       dei := tmp.HookedDevices;
@@ -399,13 +399,14 @@ If Assigned(tn) Then
     begin
     hde := tn.Data;
     FDriverMap.TryGetValue(hde.Driverobject, hdr);
-    HookedMenuItem.Checked := hde.Hooked;
     end
-  Else begin
-    hdr := tn.Data;
-    HookedMenuItem.Checked := hdr.Hooked;
-    end;
+  Else hdr := tn.Data;
 
+  If Not Assigned(hde) Then
+    HookedMenuItem.Checked := hdr.Hooked
+  Else HookedMenuItem.Checked := hde.Hooked;
+
+  DeviceExtensionMenuItem.Checked := hdr.DeviceExtensionHook;
   IRPMenuItem.Checked := hdr.Settings.MonitorIRP;
   IRPCompleteMenuItem.Checked := hdr.Settings.MonitorIRPCompletion;
   FastIOMenuItem.Checked := hdr.Settings.MonitorFastIo;
@@ -462,7 +463,6 @@ end;
 
 Procedure TTreeFrm.OkButtonClick(Sender: TObject);
 Var
-  ho : THookObject;
   cdr : TDriverHookObject;
   cde : TDeviceHookObject;
   dr : TDriverHookObject;
@@ -550,7 +550,6 @@ end;
 Procedure TTreeFrm.TreePopupMenuClick(Sender: TObject);
 Var
   M : TMenuItem;
-  I : Integer;
   tn : TTreeNode;
   ho : THookObject;
   hde : TDeviceHookObject;
@@ -558,7 +557,6 @@ Var
 begin
 hdr := Nil;
 hde := Nil;
-ho := Nil;
 tn := DeviceTreeView.Selected;
 If Assigned(tn) Then
   begin
@@ -572,7 +570,7 @@ If Assigned(tn) Then
     end
   Else hdr := tn.Data;
 
-  If M = HookedMenuItem Then
+  If (M = HookedMenuItem) Then
     begin
     ho.Hooked := M.Checked;
     If Assigned(hde) Then
@@ -592,6 +590,8 @@ If Assigned(tn) Then
         end;
       end;
     end
+  Else If M = DeviceExtensionMenuItem Then
+    hdr.DeviceExtensionHook := M.Checked
   Else If M = NewDevicesMenuItem Then
     hdr.Settings.MonitorNewDevices := M.Checked
   Else If M = IRPMenuItem Then

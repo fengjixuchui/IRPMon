@@ -44,7 +44,6 @@ Type
     WatchedClassesMenuItem: TMenuItem;
     WatchDriverNameMenuItem: TMenuItem;
     WatchedDriversMenuItem: TMenuItem;
-    SortbyIDMenuItem: TMenuItem;
     DriverMenuItem: TMenuItem;
     UnloadOnExitMenuItem: TMenuItem;
     UninstallOnExitMenuItem: TMenuItem;
@@ -73,6 +72,16 @@ Type
     DriverSnapshotEventsCollectMenuItem: TMenuItem;
     ProcessEmulateOnConnectMenuItem: TMenuItem;
     DriverSnapshotOnConnectMenuItem: TMenuItem;
+    CompressMenuItem: TMenuItem;
+    IgnoreLogFileHeadersMenuItem: TMenuItem;
+    StripRequestDataMenuItem: TMenuItem;
+    MaxRequestDataSizeMenuItem: TMenuItem;
+    RPIncludeAllMenuItem: TMenuItem;
+    RPHighlightAllMenuItem: TMenuItem;
+    RPExcludeAllMenuItem: TMenuItem;
+    CopyMenuItem: TMenuItem;
+    CopyVisibleColumnsMenuItem: TMenuItem;
+    CopyWholeLineMenuItem: TMenuItem;
     Procedure ClearMenuItemClick(Sender: TObject);
     procedure FormCreate(Sender: TObject);
     procedure CaptureEventsMenuItemClick(Sender: TObject);
@@ -84,7 +93,6 @@ Type
     procedure SaveMenuItemClick(Sender: TObject);
     procedure WatchClassMenuItemClick(Sender: TObject);
     procedure WatchDriverNameMenuItemClick(Sender: TObject);
-    procedure SortbyIDMenuItemClick(Sender: TObject);
     procedure FormClose(Sender: TObject; var Action: TCloseAction);
     procedure DriverMenuItemClick(Sender: TObject);
     procedure Documentation1Click(Sender: TObject);
@@ -99,6 +107,9 @@ Type
     procedure StatusTimerTimer(Sender: TObject);
     procedure DriverSettingsMenuItemClick(Sender: TObject);
     procedure DriverMenuItemExpand(Sender: TObject);
+    procedure CompressMenuItemClick(Sender: TObject);
+    procedure IgnoreLogFileHeadersMenuItemClick(Sender: TObject);
+    procedure CopyVisibleColumnsMenuItemClick(Sender: TObject);
   Private
 {$IFDEF FPC}
     FAppEvents: TApplicationProperties;
@@ -138,7 +149,7 @@ Implementation
 {$R *.dfm}
 
 Uses
-  IniFiles, ShellAPI,
+  IniFiles, ShellAPI, Clipbrd,
   ListModel, HookProgressForm,
   Utils, TreeForm, RequestDetailsForm, AboutForm,
   ClassWatchAdd, ClassWatch, DriverNameWatchAddForm,
@@ -250,18 +261,11 @@ end;
 Procedure TMainFrm.FormCreate(Sender: TObject);
 Var
   fileName : WideString;
-  iniFile : TIniFile;
 begin
 FFilters := TObjectList<TRequestFilter>.Create;
 fileName := ExtractFilePath(Application.ExeName) + 'filters.ini';
-iniFile := Nil;
-Try
-  iniFile := TIniFile.Create(fileName);
-  If Not TRequestFilter.LoadList(iniFile, FFilters) Then
-    FFilters.Clear;
-Finally
-  iniFile.Free;
-  end;
+If Not TRequestFilter.LoadList(fileName, FFilters) Then
+  FFilters.Clear;
 
 RequestListView.DoubleBuffered := True;
 {$IFNDEF FPC}
@@ -353,6 +357,14 @@ M.Checked := Not M.Checked;
 FModel.FilterDisplayOnly := M.Checked;
 end;
 
+Procedure TMainFrm.IgnoreLogFileHeadersMenuItemClick(Sender: TObject);
+Var
+  M : TMenuItem;
+begin
+M := Sender As TMenuItem;
+M.Checked := Not M.Checked;
+end;
+
 Procedure TMainFrm.IrpMonAppEventsException(Sender: TObject; E: Exception);
 begin
 ErrorMessage(E.Message);
@@ -372,8 +384,6 @@ end;
 
 Procedure TMainFrm.IrpMonAppEventsMessage(var Msg: tagMSG;
   Var Handled: Boolean);
-Var
-  rq : PREQUEST_GENERAL;
 begin
 If Msg.message = FRequestMsgCode Then
   begin
@@ -416,6 +426,43 @@ begin
 FModel.Clear;
 end;
 
+Procedure TMainFrm.CompressMenuItemClick(Sender: TObject);
+Var
+  M : TMenuItem;
+begin
+M := Sender As TMenuItem;
+M.Checked := Not M.Checked;
+end;
+
+Procedure TMainFrm.CopyVisibleColumnsMenuItemClick(Sender: TObject);
+Var
+  t : WideString;
+  value : WideString;
+  selectedIndex : Integer;
+  visibleOnly : Boolean;
+  c : TListModelColumn;
+  I : Integer;
+begin
+t := '';
+selectedIndex := FModel.SelectedIndex;
+visibleOnly := (Sender = CopyVisibleColumnsMenuItem);
+For I := 0 To FModel.ColumnCount - 1 Do
+  begin
+  c := FModel.Columns[I];
+  If (Not visibleOnly) Or (c.Visible) Then
+    begin
+    value := FModel.Item(selectedIndex, I);
+    If value <> '' Then
+      t := t + value + #9;
+    end;
+  end;
+
+If t <> '' Then
+  Delete(t, Length(t), 1);
+
+Clipboard.AsText := t;
+end;
+
 Procedure TMainFrm.DataParsersListViewData(Sender: TObject; Item: TListItem);
 Var
   dp : TDataParser;
@@ -439,11 +486,9 @@ end;
 Procedure TMainFrm.Documentation1Click(Sender: TObject);
 Var
   appDirectory : WideString;
-  helpFileName : WideString;
 begin
 appDirectory := ExtractFileDir(Application.ExeName);
-helpFileName := ExtractFilePath(Application.ExeName) + 'IRPMon.chm';
-ShellExecuteW(0, 'open', PWideChar(helpFileName), '', PWideChar(AppDirectory), SW_NORMAL);
+ShellExecuteW(0, 'open', 'https://github.com/MartinDrab/IRPMon/wiki', '', PWideChar(AppDirectory), SW_NORMAL);
 end;
 
 Procedure TMainFrm.DriverMenuItemClick(Sender: TObject);
@@ -476,6 +521,8 @@ If err = ERROR_SUCCESS Then
   DriverSnapshotEventsCollectMenuItem.Checked := settings.DriverSnapshotEventsCollect;
   ProcessEmulateOnConnectMenuItem.Checked := settings.ProcessEmulateOnConnect;
   DriverSnapshotOnConnectMenuItem.Checked := settings.DriverSnapshotOnConnect;
+  StripRequestDataMenuItem.Checked := settings.StripData;
+  MaxRequestDataSizeMenuItem.Caption := Format('Max request data size: %u', [settings.DataStripThreshold]);
   end;
 end;
 
@@ -484,6 +531,9 @@ Var
   M : TMenuItem;
   err : Cardinal;
   pv : ^ByteBool;
+  puv : PCardinal;
+  puvStr : WideString;
+  tmp : Cardinal;
   settings : IRPMNDRV_SETTINGS;
 begin
 M := Sender As TMenuItem;
@@ -491,6 +541,7 @@ err := IRPMonDllSettingsQuery(settings);
 If err = ERROR_SUCCESS Then
   begin
   pv := Nil;
+  puv := Nil;
   Case M.Tag Of
     0 : pv := @settings.ReqQueueClearOnDisconnect;
     1 : pv := @settings.ReqQueueCollectWhenDisconnected;
@@ -499,11 +550,31 @@ If err = ERROR_SUCCESS Then
     4 : pv := @settings.DriverSnapshotEventsCollect;
     5 : pv := @settings.ProcessEmulateOnConnect;
     6 : pv := @settings.DriverSnapshotOnConnect;
+    7 : pv := @settings.StripData;
+    8 : puv := @settings.DataStripThreshold;
     end;
 
-  M.Checked := Not M.Checked;
-  pv^ := M.Checked;
+  If Assigned(puv) Then
+    begin
+    puvStr := InputBox(M.Caption, '', IntToStr(Int64(puv^)));
+    If puvStr <> '' Then
+      begin
+      Try
+        tmp := StrToInt64(puvStr);
+        puv^ := tmp;
+      Except
+        end;
+      end;
+    end
+  Else If Assigned(pv) Then
+    begin
+    M.Checked := Not M.Checked;
+    pv^ := M.Checked;
+    end;
+
   err := IRPMonDllSettingsSet(settings, True);
+  If err <> ERROR_SUCCESS THen
+    WinErrorMessage('Unable to change the driver settings', err);
   end;
 end;
 
@@ -545,6 +616,7 @@ Var
   clientP : TPoint;
   selectedIndex : Integer;
   columnFound : Boolean;
+  requestTypeString : WideString;
 begin
 w := 0;
 value := '';
@@ -562,14 +634,24 @@ If selectedIndex <> -1 Then
       Inc(w, c.Width);
       If clientP.X <= w Then
         begin
+        requestTypeString := TDriverRequest.RequestTypeToString(FModel.Items[selectedIndex].RequestType);
         value := FModel.Item(selectedIndex, I);
-        RPIncludeMenuItem.Caption := Format('Include "%s"', [value]);
-        RPHighlightMenuItem.Caption := Format('Highlight "%s"', [value]);
-        RPExcludeMenuItem.Caption := Format('IExclude "%s"', [value]);
+        RPIncludeMenuItem.Caption := Format('Include "%s" (%s)', [value, requestTypeString]);
+        RPHighlightMenuItem.Caption := Format('Highlight "%s" (%s)...', [value, requestTypeString]);
+        RPExcludeMenuItem.Caption := Format('Exclude "%s" (%s)', [value, requestTypeString]);
+
+        RPIncludeAllMenuItem.Caption := Format('Include "%s" (all requests)', [value]);
+        RPHighlightAllMenuItem.Caption := Format('Highlight "%s" (all requests)...', [value]);
+        RPExcludeAllMenuItem.Caption := Format('Exclude "%s" (all requests)', [value]);
+
+        CopyMenuItem.Caption := Format('Copy "%s"', [value]);
         RPHighlightMenuItem.Tag := c.Tag;
         RPIncludeMenuItem.Tag := c.Tag;
         RPExcludeMenuItem.Tag := c.Tag;
-        RequestPopupMenu.Tag := I;
+        RPHighlightAllMenuItem.Tag := c.Tag;
+        RPIncludeAllMenuItem.Tag := c.Tag;
+        RPExcludeAllMenuItem.Tag := c.Tag;
+        CopyMenuItem.Tag := c.Tag;        RequestPopupMenu.Tag := I;
         columnFound := True;
         Break;
         end;
@@ -577,14 +659,21 @@ If selectedIndex <> -1 Then
     end;
   end;
 
+RequestDetailsMenuItem.Enabled := (selectedIndex <> -1);
 RPIncludeMenuItem.Enabled := columnFound;
 RPHighlightMenuItem.Enabled := columnFound;
 RPExcludeMenuItem.Enabled := columnFound;
+RPIncludeAllMenuItem.Enabled := columnFound;
+RPHighlightAllMenuItem.Enabled := columnFound;
+RPExcludeAllMenuItem.Enabled := columnFound;
+CopyMenuItem.Enabled := columnFound;
+CopyVisibleColumnsMenuItem.Enabled := (selectedIndex <> -1);
+CopyWholeLineMenuItem.Enabled := (selectedIndex <> -1);
 end;
 
 Procedure TMainFrm.RPDetailsMenuItemClick(Sender: TObject);
 begin
-Self.RequestDetailsMenuItemClick(RequestDetailsMenuItem);
+RequestDetailsMenuItemClick(RequestDetailsMenuItem);
 end;
 
 Procedure TMainFrm.SaveMenuItemClick(Sender: TObject);
@@ -599,8 +688,7 @@ If LogSaveDialog.Execute Then
     2 : fn := ChangeFIleExt(fn, '.bin');
     end;
 
-  FModel.Sort;
-  FModel.SaveToFile(fn, LogSaveDialog.FilterIndex = 2);
+  FModel.SaveToFile(fn, LogSaveDialog.FilterIndex = 2, CompressMenuItem.Checked);
   end;
 end;
 
@@ -615,26 +703,28 @@ With TTreeFrm.Create(Self) Do
 EnumerateHooks;
 end;
 
-Procedure TMainFrm.SortbyIDMenuItemClick(Sender: TObject);
-begin
-FModel.Sort;
-end;
-
 Procedure TMainFrm.StatusTimerTimer(Sender: TObject);
 Var
   err : Cardinal;
   settings : IRPMNDRV_SETTINGS;
   statusText : WideString;
 begin
-err := IRPMonDllSettingsQuery(settings);
+err := ERROR_SUCCESS;
+If ConnectorType <> ictNone Then
+  err := IRPMonDllSettingsQuery(settings);
+
 If err = ERROR_SUCCESS Then
   begin
-  If settings.ReqQueueConnected Then
-    statusText := 'Monitoring | Requests: '
-  Else statusText := 'Not monitoring | Requests: ';
+  If ConnectorType = ictNone Then
+    statusText := 'Not connected | Requests: '
+  Else begin
+    If settings.ReqQueueConnected Then
+      statusText := 'Monitoring | Requests: '
+    Else statusText := 'Not monitoring | Requests: ';
 
-  If settings.ReqQueueConnected Then
-    statusText := statusText + Format('%u queued, (%u paged, %u nonpaged) ', [settings.ReqQueueLength, settings.ReqQueuePagedLength, settings.ReqQueueNonPagedLength]);
+    If settings.ReqQueueConnected Then
+      statusText := statusText + Format('%u queued, (%u paged, %u nonpaged) ', [settings.ReqQueueLength, settings.ReqQueuePagedLength, settings.ReqQueueNonPagedLength]);
+    end;
 
   statusText := statusText + Format('%u displayed, ', [FModel.RowCount]);
   statusText := statusText + Format('%u total', [FModel.TotalCount]);
@@ -650,7 +740,6 @@ Var
   err : Cardinal;
   mCaption : WideString;
 begin
-err := ERROR_SUCCESS;
 With TClassWatchAddFrm.Create(Self) Do
   begin
   ShowModal;
@@ -817,55 +906,95 @@ If LogOpenDialog.Execute Then
   If LogOpenDialog.FilterIndex = 1 Then
     fn := ChangeFileExt(fn, '.bin');
 
-  FModel.LoadFromFile(fn);
+  FModel.LoadFromFile(fn, Not IgnoreLogFileHeadersMenuItem.Checked);
   end;
 end;
 
 procedure TMainFrm.PopupFilterClick(Sender: TObject);
 Var
+  copyText : Boolean;
   filterAction : EFilterAction;
   invalidButton : Boolean;
   rf : TRequestFilter;
   M : TMenuItem;
   value : WideString;
+  intValue : UInt64;
   rq : TDriverRequest;
+  d : Pointer;
+  l : Cardinal;
+  ret : Boolean;
+  columnType : ERequestListModelColumnType;
+  filterType : ERequestType;
 begin
+filterAction := ffaHighlight;
 invalidButton := False;
+copyText := False;
 M := Sender As TMenuItem;
-If Sender = RPHighlightMenuItem Then
+If (Sender = RPHighlightMenuItem) Or
+   (Sender = RPHighlightAllMenuItem) Then
   filterAction := ffaHighlight
-Else If Sender = RPIncludeMenuItem Then
+Else If (Sender = RPIncludeMenuItem) Or
+        (Sender = RPIncludeAllMenuItem) Then
   filterAction := ffaInclude
-Else If Sender = RPExcludeMenuItem Then
+Else If (Sender = RPExcludeMenuItem) Or
+        (Sender = RPExcludeAllMenuItem) Then
   filterAction := ffaExclude
+Else If Sender = CopyMenuItem Then
+  copyText := True
 Else invalidButton := True;
 
 If Not invalidButton Then
   begin
   value := FModel.Item(FModel.SelectedIndex, RequestPopupMenu.Tag);
-  rq := FModel.Selected;
-  rf := TRequestFilter.NewInstance(rq.RequestType);
-  rf.Enabled := True;
-  If rf.SetCondition(ERequestListModelColumnType(M.Tag), rfoEquals, value) Then
+  If Not copyText Then
     begin
-    If filterAction = ffaHighlight Then
+    rq := FModel.Selected;
+    filterType := ertUndefined;
+    If (Sender = RPIncludeMenuItem) Or
+       (Sender = RPHighlightMenuItem) Or
+       (Sender = RPExcludeMenuItem) Then
+       filterType := rq.RequestType;
+
+    rf := TRequestFilter.NewInstance(filterType);
+    rf.Enabled := True;
+    rf.Ephemeral := True;
+    columnType := ERequestListModelColumnType(M.Tag);
+    ret := rq.GetColumnValueRaw(columnType, d, l);
+    If ret Then
       begin
-      If highlightColorDialog.Execute Then
+      If RequestListModelColumnValueTypes[Ord(columnType)] <> rlmcvtString Then
         begin
-        rf.SetAction(filterAction, highlightColorDialog.Color);
-        FFilters.Add(rf);
+        intValue := 0;
+        Move(d^, intValue, l);
+        ret := rf.SetCondition(columnType, rfoEquals, intValue);
         end
-      Else FreeAndNil(rf);
-      end
-    Else begin
-      rf.SetAction(filterAction);
-      FFilters.Insert(0, rf);
+      Else ret := rf.SetCondition(columnType, rfoEquals, value);
       end;
 
-    If Assigned(rf) Then
-      FModel.Reevaluate;
+    If ret Then
+      begin
+      If filterAction = ffaHighlight Then
+        begin
+        If highlightColorDialog.Execute Then
+          begin
+          rf.SetAction(filterAction, highlightColorDialog.Color);
+          rf.GenerateName(FFilters);
+          FFilters.Add(rf);
+          end
+        Else FreeAndNil(rf);
+        end
+      Else begin
+        rf.SetAction(filterAction);
+        rf.GenerateName(FFilters);
+        FFilters.Insert(0, rf);
+        end;
+
+      If Assigned(rf) Then
+        FModel.Reevaluate;
+      end
+    Else ErrorMessage('Unable to set filter condition');
     end
-  Else ErrorMessage('Unable to set filter condition');
+  Else Clipboard.AsText := value;
   end;
 end;
 
@@ -903,12 +1032,15 @@ Var
   iniCOlumnName : WideString;
   iniFile : TIniFile;
 begin
+iniFile := Nil;
 Try
   iniFile := TIniFile.Create(ChangeFileExt(Application.ExeName, '.ini'));
   iniFIle.WriteBool('Driver', 'unload_on_exit', UnloadOnExitMenuItem.Checked);
   iniFIle.WriteBool('Driver', 'uninstall_on_exit', UninstallOnExitMenuItem.Checked);
   iniFile.WriteBool('General', 'CaptureEvents', CaptureEventsMenuItem.Checked);
   iniFile.WriteBool('General', 'filter_display_only', HideExcludedRequestsMenuItem.Checked);
+  iniFile.WriteBool('Log', 'compress_requests', CompressMenuItem.Checked);
+  iniFile.WriteBool('Log', 'ignore_headers', IgnoreLogFileHeadersMenuItem.Checked);
   For I := 0 To FModel.ColumnCount - 1 Do
     begin
     c := FModel.Columns[I];
@@ -933,10 +1065,13 @@ Var
   iniCOlumnName : WideString;
   iniFile : TIniFile;
 begin
+iniFIle := Nil;
 Try
   iniFile := TIniFile.Create(ChangeFileExt(Application.ExeName, '.ini'));
   UnloadOnExitMenuItem.Checked := iniFIle.ReadBool('Driver', 'unload_on_exit', False);
   UninstallOnExitMenuItem.Checked := iniFIle.ReadBool('Driver', 'uninstall_on_exit', True);
+  CompressMenuItem.Checked := iniFIle.ReadBool('Log', 'compress_requests', False);
+  IgnoreLogFileHeadersMenuItem.Checked := iniFile.ReadBool('Log', 'ignore_headers', False);
   If IRPMonDllInitialized Then
     begin
     CaptureEventsMenuItem.Checked := Not iniFile.ReadBool('General', 'CaptureEvents', False);
@@ -974,6 +1109,8 @@ Var
   allInclusive : Boolean;
   allExclusive : Boolean;
   noMatch : Boolean;
+  action : EFilterAction;
+  hColor : Cardinal;
 begin
 allInclusive := True;
 allExclusive := True;
@@ -988,20 +1125,19 @@ For rf In FFilters Do
   If rf.Action = ffaExclude Then
     allInclusive := False;
 
-  matchingRF := rf.Match(ARequest);
+  matchingRF := rf.Match(ARequest, action, hColor);
   If Assigned(matchingRF) Then
     begin
-    If (matchingRF.Action = ffaInclude) Or (matchingRF.Action = ffaExclude) Then
+    If (noMatch) And ((action = ffaInclude) Or (action = ffaExclude)) Then
       begin
       noMatch := False;
-      If Not AStore Then
-        AStore := (matchingRF.Action = ffaInclude);
+      AStore := (action = ffaInclude);
       end;
 
-    If matchingRF.Action <> ffaExclude Then
+    If (action = ffaInclude) Or (action = ffaHighlight) Then
       begin
-      ARequest.Highlight := (matchingRF.HighlightColor <> $FFFFFF);
-      ARequest.HighlightColor := matchingRF.HighlightColor;
+      ARequest.Highlight := (hColor <> $FFFFFF);
+      ARequest.HighlightColor := hColor;
       end;
     end;
   end;

@@ -386,7 +386,8 @@ Type
     (** Last handle to a file object has been closed (IRP_MJ_CLEANUP) **)
     ertFileObjectNameDeleted,
     ertProcessCreated,
-    ertProcessExitted
+    ertProcessExitted,
+    ertImageLoad
   );
   ERequesttype = _ERequestType;
   PERequesttype = ^ERequesttype;
@@ -493,6 +494,9 @@ Type
     MinorFunction : Cardinal;
     Arguments : Packed Array [0..3] Of Pointer;
     FileObject : Pointer;
+    RequestorProcessId : NativeUInt;
+    PreviousMode : Byte;
+    RequestorMode : Byte;
     DataSize : NativeUInt;
     end;
   REQUEST_IRP_COMPLETION = _REQUEST_IRP_COMPLETION;
@@ -623,6 +627,53 @@ Type
   REQUEST_PROCESS_EXITTED = _REQUEST_PROCESS_EXITTED;
   PREQUEST_PROCESS_EXITTED = ^REQUEST_PROCESS_EXITTED;
 
+  _EImageSignatureType = (
+	  istNone,
+	  istEmbedded,
+	  istCache,
+	  istCatalogCached,
+	  istCatalogNotCached,
+	  istCatalogHint,
+	  istPackageCatalog);
+  EImageSignatureType = _EImageSignatureType;
+  PEImageSignatureType = ^EImageSignatureType;
+
+  _EImageSigningLevel = (
+	  islUnchecked,
+	  islUnsigned,
+	  islEnterprise,
+	  islDeveloper,
+	  islAuthenticode,
+	  islCustom2,
+	  islStore,
+	  islAntiMalware,
+	  islMicrosoft,
+	  islCustom4,
+	  islCustom5,
+	  islDynamicCode,
+	  islWindows,
+	  islCustom7,
+	  islWindowsTCB,
+	  islCustom6);
+  EImageSigningLevel = _EImageSigningLevel;
+  PEImageSigningLevel = ^EImageSigningLevel;
+
+  _REQUEST_IMAGE_LOAD = Record
+    Header : REQUEST_HEADER;
+	  ImageBase : Pointer;
+    ImageSize : NativeUInt;
+	  FileObject : Pointer;
+    SignatureLevel : EImageSigningLevel;
+    SignatureType : EImageSignatureType;
+    DataSize : Cardinal;
+    KernelDriver : ByteBool;
+    MappedToAllPids : ByteBool;
+    ExtraInfo : ByteBool;
+	  PartialMap : ByteBool;
+    end;
+  REQUEST_IMAGE_LOAD = _REQUEST_IMAGE_LOAD;
+  PREQUEST_IMAGE_LOAD = ^REQUEST_IMAGE_LOAD;
+
 
   _REQUEST_GENERAL = Record
     Case ERequestType Of
@@ -638,7 +689,8 @@ Type
       ertFileObjectNameAssigned : (FileObjectNameAssigned : REQUEST_FILE_OBJECT_NAME_ASSIGNED);
       ertFileObjectNameDeleted : (FileObjectNameDeleted : REQUEST_FILE_OBJECT_NAME_DELETED);
       ertProcessCreated : (ProcessCreated : REQUEST_PROCESS_CREATED);
-      ertProcessExitted : (ProcessExitted : REQUEST_PROCESS_EXITTED)
+      ertProcessExitted : (ProcessExitted : REQUEST_PROCESS_EXITTED);
+      ertImageLoad : (ImageLoad : REQUEST_IMAGE_LOAD)
     end;
   REQUEST_GENERAL = _REQUEST_GENERAL;
   PREQUEST_GENERAL = ^REQUEST_GENERAL;
@@ -715,6 +767,7 @@ Type
 	    driver. If set to TRUE, the information about the events is stored in the
 		  IRPMon Event Queue. *)
     MonitoringEnabled : ByteBool;
+    DeviceExtensionHooks : ByteBool;
     MonitorSettings : DRIVER_MONITOR_SETTINGS;
 	  (** Number of devices, monitored by the IRPMon driver (not including the new ones). *)
     NumberOfHookedDevices : Cardinal;
@@ -809,15 +862,37 @@ Type
 	  DriverSnapshotEventsCollect : ByteBool;
 	  ProcessEmulateOnConnect : ByteBool;
 	  DriverSnapshotOnConnect : ByteBool;
+    DataStripThreshold : Cardinal;
+    StripData : ByteBool;
     end;
   IRPMNDRV_SETTINGS = _IRPMNDRV_SETTINGS;
   PIRPMNDRV_SETTINGS = ^IRPMNDRV_SETTINGS;
+
+  ERequestFilterOperator = (
+    rfoEquals,
+    rfoLowerEquals,
+    rfoGreaterEquals,
+    rfoLower,
+    rfoGreater,
+    rfoContains,
+    rfoBegins,
+    rfoEnds,
+    rfoAlwaysTrue,
+    rfoDLLDecider
+  );
+
+  EFilterAction = (
+    ffaHighlight, // If the request is included
+    ffaInclude,
+    ffaExclude,
+    ffaPassToFilter
+  );
 
 
 Function IRPMonDllDriverHooksEnumerate(Var AHookedDrivers:PHOOKED_DRIVER_UMINFO; Var ACount:Cardinal):Cardinal; StdCall;
 Procedure IRPMonDllDriverHooksFree(AHookedDrivers:PHOOKED_DRIVER_UMINFO; ACount:Cardinal); StdCall;
 
-Function IRPMonDllHookDriver(ADriverName:PWideChar; Var AMonitorSettings:DRIVER_MONITOR_SETTINGS; Var ADriverHandle:THandle; Var AObjectId:Pointer):Cardinal; StdCall;
+Function IRPMonDllHookDriver(ADriverName:PWideChar; Var AMonitorSettings:DRIVER_MONITOR_SETTINGS; ADeviceExtensionHook:ByteBool; Var ADriverHandle:THandle; Var AObjectId:Pointer):Cardinal; StdCall;
 Function IRPMonDllDriverStartMonitoring(ADriverhandle:THandle):Cardinal; StdCall;
 Function IRPMonDllDriverStopMonitoring(ADriverhandle:THandle):Cardinal; StdCall;
 Function IRPMonDllDriverSetInfo(ADriverHandle:THandle; Var ASettings:DRIVER_MONITOR_SETTINGS):Cardinal; StdCall;
@@ -877,7 +952,7 @@ Const
 Function IRPMonDllDriverHooksEnumerate(Var AHookedDrivers:PHOOKED_DRIVER_UMINFO; Var ACount:Cardinal):Cardinal; StdCall; External LibraryName;
 Procedure IRPMonDllDriverHooksFree(AHookedDrivers:PHOOKED_DRIVER_UMINFO; ACount:Cardinal); StdCall; External LibraryName;
 
-Function IRPMonDllHookDriver(ADriverName:PWideChar; Var AMonitorSettings:DRIVER_MONITOR_SETTINGS; Var ADriverHandle:THandle; Var AObjectId:Pointer):Cardinal; StdCall; External LibraryName;
+Function IRPMonDllHookDriver(ADriverName:PWideChar; Var AMonitorSettings:DRIVER_MONITOR_SETTINGS; ADeviceExtensionHook:ByteBool; Var ADriverHandle:THandle; Var AObjectId:Pointer):Cardinal; StdCall; External LibraryName;
 Function IRPMonDllDriverStartMonitoring(ADriverhandle:THandle):Cardinal; StdCall; External LibraryName;
 Function IRPMonDllDriverStopMonitoring(ADriverhandle:THandle):Cardinal; StdCall; External LibraryName;
 Function IRPMonDllDriverSetInfo(ADriverHandle:THandle; Var ASettings:DRIVER_MONITOR_SETTINGS):Cardinal; StdCall; External LibraryName;

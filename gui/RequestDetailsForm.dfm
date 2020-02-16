@@ -878,7 +878,6 @@ object RequestDetailsFrm: TRequestDetailsFrm
     Height = 41
     Align = alBottom
     TabOrder = 0
-    ExplicitWidth = 483
     object OkButton: TButton
       Left = 240
       Top = 6
@@ -897,10 +896,12 @@ object RequestDetailsFrm: TRequestDetailsFrm
     ActivePage = HeadersTabSheet
     Align = alClient
     TabOrder = 1
-    ExplicitWidth = 483
     object HeadersTabSheet: TTabSheet
       Caption = 'Headers'
-      ExplicitWidth = 475
+      ExplicitLeft = 0
+      ExplicitTop = 0
+      ExplicitWidth = 0
+      ExplicitHeight = 0
       object NameValueListView: TListView
         Left = 0
         Top = 0
@@ -920,12 +921,29 @@ object RequestDetailsFrm: TRequestDetailsFrm
         ReadOnly = True
         RowSelect = True
         ParentDoubleBuffered = False
+        PopupMenu = HeaderPopupMenu
         ShowColumnHeaders = False
         ShowWorkAreas = True
         TabOrder = 0
         ViewStyle = vsReport
-        ExplicitWidth = 475
       end
+    end
+  end
+  object HeaderPopupMenu: TPopupMenu
+    OnPopup = HeaderPopupMenuPopup
+    Left = 60
+    Top = 80
+    object CopyValueMenuItem: TMenuItem
+      Caption = 'Copy value'
+      OnClick = CopyClick
+    end
+    object CopyLineMenuItem: TMenuItem
+      Caption = 'Copy line'
+      OnClick = CopyClick
+    end
+    object CopyAllMenuItem: TMenuItem
+      Caption = 'Copy all'
+      OnClick = CopyClick
     end
   end
 end

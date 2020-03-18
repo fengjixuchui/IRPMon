@@ -27,12 +27,13 @@
 
 #endif
 
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 
 size_t RequestGetSize(const REQUEST_HEADER *Header);
 
-BOOLEAN RequestCompress(PREQUEST_HEADER Header);
-PREQUEST_HEADER RequestDecompress(const REQUEST_HEADER *Header);
 PREQUEST_HEADER RequestCopy(const REQUEST_HEADER *Header);
 
 ERROR_TYPE RequestEmulateDriverDetected(void *DriverObject, const wchar_t *DriverName, PREQUEST_DRIVER_DETECTED *Request);
@@ -48,6 +49,10 @@ void _SetRequestFlags(PREQUEST_HEADER Request, const BASIC_CLIENT_INFO *Info);
 
 PREQUEST_HEADER RequestMemoryAlloc(size_t Size);
 void RequestMemoryFree(PREQUEST_HEADER Request);
+
+#ifdef __cplusplus
+}
+#endif
 
 
 

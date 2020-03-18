@@ -84,7 +84,6 @@ typedef enum _ERequestResultType {
 #define REQUEST_FLAG_IMPERSONATED			0x8
 #define REQUEST_FLAG_IMPERSONATED_ADMIN		0x10
 #define REQUEST_FLAG_NEXT_AVAILABLE			0x20
-#define REQUEST_FLAG_COMPRESSED				0x40
 #define REQUEST_FLAG_PAGED					0x80
 #define REQUEST_FLAG_NONPAGED				0x100
 
@@ -378,66 +377,75 @@ typedef struct _REQUEST_CREATE_IRP_ETRA_PARAMETERS {
 /************************************************************************/
 
 
-/** Contains information about one device monitored by the IRPMon driver. */
+/// Contains information about one device monitored by the IRPMon driver.
 typedef struct _HOOKED_DEVICE_UMINFO {
-	/** ID of the object, used within the IRPMon driver. */
+	/// ID of the object, used within the IRPMon driver.
 	PVOID ObjectId;
-	/** Address of device's DEVICE_OBJECT structure. */
+	/// Address of device's DEVICE_OBJECT structure.
 	PVOID DeviceObject;
-	/** Name of the hooked device. Can never be NULL. */
+	/// Name of the hooked device. Can never be NULL.
 	PWCHAR DeviceName;
-	/** Length of the device name, in bytes. The value does not include the
-	    terminating null character. */
+	/// Length of the device name, in bytes. The value does not include the
+	/// terminating null character.
 	ULONG DeviceNameLen;
-	/** Indicates which types of fast I/O requests are monitored. THe exact
-	   meaning of each entry is still undefined. */
+	/// Indicates which types of fast I/O requests are monitored. THe exact
+	/// meaning of each entry is still undefined.
 	UCHAR FastIoSettings[FastIoMax];
-	/** Indicates which types of IRP requests are monitored. THe exact
-	   meaning of each entry is still undefined. 
-	   NOTE: 0x1b = IRP_MJ_MAXIMUM_FUNCTION. */
+	/// Indicates which types of IRP requests are monitored. THe exact
+	///   meaning of each entry is still undefined. 
+	///   NOTE: 0x1b = IRP_MJ_MAXIMUM_FUNCTION.
 	UCHAR IRPSettings[0x1b + 1];
-	/** Indicates whether the monitoring is active for the device. */
+	/// Indicates whether the monitoring is active for the device.
 	BOOLEAN MonitoringEnabled;
 } HOOKED_DEVICE_UMINFO, *PHOOKED_DEVICE_UMINFO;
 
+/// Defines driver monitoring settings
 typedef struct _DRIVER_MONITOR_SETTINGS {
+	/// Automatically start monitoring newly created devices.
 	BOOLEAN MonitorNewDevices;
+	/// Report calls to driver's AddDevice routine.
 	BOOLEAN MonitorAddDevice;
+	/// Report calls to driver's StartIo routine.
 	BOOLEAN MonitorStartIo;
+	/// Report driver unload.
 	BOOLEAN MonitorUnload;
+	/// Monitor Fast I/O requests server by the target driver.
 	BOOLEAN MonitorFastIo;
+	/// Monitor IRPs targetted to one of the monitored device objects
+	/// of the driver.
 	BOOLEAN MonitorIRP;
+	/// Report IRP completions.
 	BOOLEAN MonitorIRPCompletion;
+	/// Collect additional data for intercepted requests.
 	BOOLEAN MonitorData;
-	/** IRPSettings for newly hooked devices. */
+	/// IRPSettings for newly hooked devices.
 	UCHAR IRPSettings[0x1b + 1];
-	/** FastIoSettings for newly hooked devices. */
+	/// FastIoSettings for newly hooked devices.
 	UCHAR FastIoSettings[FastIoMax];
 } DRIVER_MONITOR_SETTINGS, *PDRIVER_MONITOR_SETTINGS;
 
-/** Contains information about one driver hooked by the IRPMon driver. */
+/// Contains information about one driver hooked by the IRPMon driver.
 typedef struct _HOOKED_DRIVER_UMINFO {
-	/** ID of the object, used within the IRPMon driver. */
+	/// ID of the object, used within the IRPMon driver.
 	PVOID ObjectId;
-	/** Address of driver's DRIVER_OBJECT structure. */
+	/// Address of driver's DRIVER_OBJECT structure.
 	PVOID DriverObject;
-	/** Name of the driver. Cannot be NULL. */
+	/// Name of the driver. Cannot be <c>NULL</c>.
 	PWCHAR DriverName;
-	/* Length of the driver name, in bytes. The value does not include the
-	   terminating null-character. */
+	/// Length of the driver name, in bytes. The value does not include the terminating null-character.
 	ULONG DriverNameLen;
-	/** Indicates whether the IRPMon driver monitors events related to the target
-	    driver. If set to TRUE, the information about the events is stored in the
-		IRPMon Event Queue. */
+	/// Indicates whether the IRPMon driver monitors events related to the target
+	/// driver. If set to TRUE, the information about the events is stored in the
+	///	IRPMon Event Queue.
 	BOOLEAN MonitoringEnabled;
-	/** If set to TRUE, device extension-based hooks are used
-	    instead of IRP ones. */
+	/// If set to TRUE, device extension-based hooks are used
+	/// instead of IRP ones. */
 	BOOLEAN DeviceExtensionHooks;
 	DRIVER_MONITOR_SETTINGS MonitorSettings;
-	/** Number of devices, monitored by the IRPMon driver (not including the new ones). */
+	/// Number of devices, monitored by the IRPMon driver (not including the new ones).
 	ULONG NumberOfHookedDevices;
-	/** An array of @link(HOOKED_DEVICE_UMINFO) structures, each representing one
-	   monitored device. */
+	/// An array of @link(HOOKED_DEVICE_UMINFO) structures, each representing one
+	/// monitored device.
 	PHOOKED_DEVICE_UMINFO HookedDevices;
 } HOOKED_DRIVER_UMINFO, *PHOOKED_DRIVER_UMINFO;
 
@@ -447,20 +455,58 @@ typedef struct _HOOKED_DRIVER_UMINFO {
 /************************************************************************/
 
 
+/// Global IRPMon driver statistics and settings.
 typedef struct _IRPMNDRV_SETTINGS {
+	/// Specifies ID of the newest event/request generated by the driver.
+	/// This member is read-only.
 	volatile LONG ReqQueueLastRequestId;
+	/// Total number of events/requests currently present in the Event Queue.
+	/// This member is read-only.
 	volatile LONG ReqQueueLength;
+	/// Specifies number of events allocated from nonpaged pool currently present
+	/// in the Event Queue. This member is read only.
 	volatile LONG ReqQueueNonPagedLength;
+	/// Specifies number of events allocated from paged pool currently present
+	/// in the Event Queue. This member is read only.
 	volatile LONG ReqQueuePagedLength;
+	/// Indicates whether someone is connected to the driver event queue,
+	/// thus receiving requests detected by the driver. This is a read-only
+	/// member.
 	BOOLEAN ReqQueueConnected;
+	/// If set to <c>TRUE</c>, the Event Queue is cleared (all requests in
+	/// it discared) when disconnected.
 	BOOLEAN ReqQueueClearOnDisconnect;
+	/// Set this member to <c>TRUE</c> to instruct the driver to store
+	/// requests in the Event Queue even when no one is connected to it.
+	/// By default, the driver puts requests into the queue only if a
+	/// library instance is connected to it (i.e. there is a consumer).
 	BOOLEAN ReqQueueCollectWhenDisconnected;
+	/// Instructs the driver to collect process-related events (process
+	/// creation, process exit).
 	BOOLEAN ProcessEventsCollect;
+	/// Instructs the driver to collect events about file objects
+	/// (file object name assignment and deletion).
 	BOOLEAN FileObjectEventsCollect;
+	/// Instructs the driver to generate events when a new driver or device
+	/// object are detected.
 	BOOLEAN DriverSnapshotEventsCollect;
+	/// If set to <c>TRUE</c>, any library instance that connects to
+	/// the Event Queue gets process creation event for all processes
+	/// currently running in the system. Thus, the instance needs not
+	/// to enumerate running processes by itself.
 	BOOLEAN ProcessEmulateOnConnect;
+	/// If set to <c>TRUE</c>, any library instance that connects to
+	/// the Event Queue gets driver detected and device detected events for all drivers and devices
+	/// currently present in the system. Thus, the instance needs not
+	/// to obtain this information by itself (e.g. via <see cref="IRPMonDllSnapshotRetrieve"/>).
 	BOOLEAN DriverSnapshotOnConnect;
+	/// Defines maximum amount of data that can be associated with
+	/// an event. Set this to zero to disable the limit.
 	ULONG DataStripThreshold;
+	/// Defines driver behavior for events with associated data of length
+	/// greater than the limit (<see cref="_IRPMNDRV_SETTINGS:DataStripThreshold"/>).
+	/// If set to <c>FALSE</c> the limit is not enforced. If set to <c>TRUE</c>,
+	/// data are stripped to match the limit, if necessary.
 	BOOLEAN StripData;
 } IRPMNDRV_SETTINGS, *PIRPMNDRV_SETTINGS;
 

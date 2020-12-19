@@ -3,11 +3,16 @@ Unit FillterForm;
 Interface
 
 Uses
-  Winapi.Windows, Winapi.Messages, System.SysUtils, System.Variants,
-  System.Classes, Vcl.Graphics,
-  Vcl.Controls, Vcl.Forms, Vcl.Dialogs, Vcl.StdCtrls,
-  Generics.Collections, RequestFilter, RequestListModel, Vcl.ExtCtrls,
-  Vcl.ComCtrls;
+  Windows, Messages, SysUtils, Variants,
+  Classes, Graphics,
+  Controls, Forms, Dialogs, StdCtrls,
+  Generics.Collections, RequestFilter, RequestListModel, ExtCtrls,
+  ComCtrls
+{$IFDEF FPC}
+  ,ColorBox
+{$ENDIF}
+  ;
+
 
 Type
   EFilterComboboxType = (
@@ -476,6 +481,7 @@ end;
 
 Procedure TFilterFrm.OkButtonClick(Sender: TObject);
 begin
+FCancelled := False;
 FFilterList.OwnsObjects := False;
 Close;
 end;
@@ -548,7 +554,7 @@ Try
     begin
     If (v = FilterValueComboBox.Items[I]) Then
       begin
-      v := UIntToStr(UInt64(FilterValueComboBox.Items.Objects[I]));
+      v := IntToStr(UInt64(FilterValueComboBox.Items.Objects[I]));
       Break;
       end;
     end;

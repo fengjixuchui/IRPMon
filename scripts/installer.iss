@@ -6,7 +6,9 @@
 #define MyAppPublisher "Martin Dráb"
 #define MyAppURL "https://github.com/MartinDrab/IRPMon"
 #define MyAppUpdateURL "https://github.com/MartinDrab/IRPMon/releases"
-#define ConfigMode "Release"
+#define ConfigMode "Debug"
+
+#include "path.iss"
 
 [Setup]
 AppId={{F913732F-475C-46F8-84AA-80FE454CC7ED}
@@ -30,6 +32,7 @@ Compression=lzma
 SolidCompression=yes
 WizardStyle=modern
 ArchitecturesInstallIn64BitMode=x64
+ChangesEnvironment=true
 
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"
@@ -41,30 +44,47 @@ Name: "custom"; Description: "Custom installation"; Flags: iscustom
 [Components]
 Name: "Runtime"; Description: "Microsoft runtime libraries required by the program"; Types: full custom; Flags: fixed
 Name: "Libraries"; Description: "Libraries implementing basic IRPMon functionality"; Types: full custom; Flags: fixed
+Name: "CmdLine"; Description: "Command-line interface"; Types: full custom;
 Name: "Kernel"; Description: "Kernel driver for monitoring device driver requests"; Types: full custom;
 Name: "Application"; Description: "Application for setting up the monitoring, browsing log files and managing IRPMon as a whole"; Types: full custom;
 Name: "Server"; Description: "Console application and service for receiving commands accross the network"; Types: full custom;
 Name: "Parsers"; Description: "Libraries customizing data parsing mechanisms of the IRPMon application"; Types: full custom;
+Name: "Symbols"; Description: "Debug symbols"; Types: full custom;
 
 [Files]
 Source: "..\bin\x64\{#ConfigMode}\server\*.exe"; DestDir: "{app}\x64"; Flags: ignoreversion; Components: Server;
 Source: "..\bin\x64\{#ConfigMode}\server\*.dll"; DestDir: "{app}\x64"; Flags: ignoreversion; Components: Server;
+Source: "..\bin\x64\{#ConfigMode}\server\*.pdb"; DestDir: "{app}\x64"; Flags: ignoreversion; Components: Symbols;
 Source: "..\bin\Win32\{#ConfigMode}\server\*.exe"; DestDir: "{app}\x86"; Flags: ignoreversion; Components: Server;
 Source: "..\bin\Win32\{#ConfigMode}\server\*.dll"; DestDir: "{app}\x86"; Flags: ignoreversion; Components: Server;
+Source: "..\bin\Win32\{#ConfigMode}\server\*.pdb"; DestDir: "{app}\x86"; Flags: ignoreversion; Components: Symbols;
 
 Source: "..\bin\x64\{#ConfigMode}\parser\*.dll"; DestDir: "{app}\x64"; Flags: ignoreversion; Components: Server;
+Source: "..\bin\x64\{#ConfigMode}\parser\*.pdb"; DestDir: "{app}\x64"; Flags: ignoreversion; Components: Symbols;
 Source: "..\bin\Win32\{#ConfigMode}\parser\*.dll"; DestDir: "{app}\x86"; Flags: ignoreversion; Components: Server;
+Source: "..\bin\Win32\{#ConfigMode}\parser\*.pdb"; DestDir: "{app}\x86"; Flags: ignoreversion; Components: Symbols;
 
-Source: "..\bin\x64\{#ConfigMode}\IRPMon.exe"; DestDir: "{app}\x64"; Flags: ignoreversion; Components: Application;
+Source: "..\bin\Win64\{#ConfigMode}\IRPMon.exe"; DestDir: "{app}\x64"; Flags: ignoreversion; Components: Application;
 Source: "..\bin\Win32\{#ConfigMode}\IRPMon.exe"; DestDir: "{app}\x86"; Flags: ignoreversion; Components: Application;
 
-Source: "..\bin\x64\{#ConfigMode}\kernel\*.dll"; DestDir: "{app}\x64"; Flags: ignoreversion; Components: Kernel;
-Source: "..\bin\x64\{#ConfigMode}\kernel\*.sys"; DestDir: "{app}\x64"; Flags: ignoreversion; Components: Kernel;
-Source: "..\bin\Win32\{#ConfigMode}\kernel\*.dll"; DestDir: "{app}\x86"; Flags: ignoreversion; Components: Kernel;
-Source: "..\bin\Win32\{#ConfigMode}\kernel\*.sys"; DestDir: "{app}\x86"; Flags: ignoreversion; Components: Kernel;
+Source: "..\bin\Win64\{#ConfigMode}\*.dll"; DestDir: "{app}\x64"; Flags: ignoreversion; Components: CmdLine;
+Source: "..\bin\Win32\{#ConfigMode}\*.dll"; DestDir: "{app}\x86"; Flags: ignoreversion; Components: CmdLine;
+Source: "..\bin\x64\{#ConfigMode}\IRPMonc.exe"; DestDir: "{app}\x64"; Flags: ignoreversion; Components: CmdLine;
+Source: "..\bin\x64\{#ConfigMode}\*.pdb"; DestDir: "{app}\x64"; Flags: ignoreversion; Components: Symbols;
+Source: "..\bin\Win32\{#ConfigMode}\IRPMonc.exe"; DestDir: "{app}\x86"; Flags: ignoreversion; Components: CmdLine;
+Source: "..\bin\Win32\{#ConfigMode}\*.pdb"; DestDir: "{app}\x86"; Flags: ignoreversion; Components: Symbols;
+
+Source: "..\bin\x64\{#ConfigMode}\kernel\*.dll"; DestDir: "{sysnative}\drivers\IRPMon\"; Check: Is64BitInstallMode; Flags: ignoreversion; Components: Kernel;
+Source: "..\bin\x64\{#ConfigMode}\kernel\*.sys"; DestDir: "{sysnative}\drivers\IRPMon\"; Check: Is64BitInstallMode; Flags: ignoreversion; Components: Kernel;
+Source: "..\bin\x64\{#ConfigMode}\kernel\*.pdb"; DestDir: "{sysnative}\drivers\IRPMon\"; Check: Is64BitInstallMode; Flags: ignoreversion; Components: Symbols;
+Source: "..\bin\Win32\{#ConfigMode}\kernel\*.dll"; DestDir: "{sysnative}\drivers\IRPMon\"; Check: not Is64BitInstallMode; Flags: ignoreversion; Components: Kernel;
+Source: "..\bin\Win32\{#ConfigMode}\kernel\*.sys"; DestDir: "{sysnative}\drivers\IRPMon\"; Check: not Is64BitInstallMode; Flags: ignoreversion; Components: Kernel;
+Source: "..\bin\Win32\{#ConfigMode}\kernel\*.pdb"; DestDir: "{sysnative}\drivers\IRPMon\"; Check: not Is64BitInstallMode; Flags: ignoreversion; Components: Symbols;
 
 Source: "..\bin\x64\{#ConfigMode}\dlls\*.dll"; DestDir: "{app}\x64"; Flags: ignoreversion; Components: Libraries;
+Source: "..\bin\x64\{#ConfigMode}\dlls\*.pdb"; DestDir: "{app}\x64"; Flags: ignoreversion; Components: Symbols;
 Source: "..\bin\Win32\{#ConfigMode}\dlls\*.dll"; DestDir: "{app}\x86"; Flags: ignoreversion; Components: Libraries;
+Source: "..\bin\Win32\{#ConfigMode}\dlls\*.pdb"; DestDir: "{app}\x86"; Flags: ignoreversion; Components: Symbols;
 Source: "..\resources\ioctl.txt"; DestDir: "{app}\x64"; Flags: ignoreversion; Components: Libraries;
 Source: "..\resources\ntstatus.txt"; DestDir: "{app}\x64"; Flags: ignoreversion; Components: Libraries;
 Source: "..\resources\winerr.txt"; DestDir: "{app}\x64"; Flags: ignoreversion; Components: Libraries;
@@ -74,6 +94,8 @@ Source: "..\resources\winerr.txt"; DestDir: "{app}\x86"; Flags: ignoreversion; C
 
 Source: "..\dlls\Win32\{#ConfigMode}\*.dll"; DestDir: "{app}\x86"; Flags: ignoreversion; Components: Runtime;
 Source: "..\dlls\x64\{#ConfigMode}\*.dll"; DestDir: "{app}\x64"; Flags: ignoreversion; Components: Runtime;
+Source: "..\dlls\Win32\*.dll"; DestDir: "{app}\x86"; Flags: ignoreversion; Components: Runtime;
+Source: "..\dlls\x64\*.dll"; DestDir: "{app}\x64"; Flags: ignoreversion; Components: Runtime;
 
 [Tasks]
 Name: DriverInstall; Description: "Install IRPMon driver service"; Components: Kernel; GroupDescription: "Monitoring driver";
@@ -82,6 +104,7 @@ Name: ServerInstall; Description: "Install IRPMon server service"; Components: S
 Name: ServerAuto; Description: "Run IRPMon server on startup"; Components: Server and Kernel; GroupDescription: "Server service";
 Name: AppDesktop; Description: "Create Desktop shortcuts"; Components: Application; GroupDescription: "GUI Application";
 Name: AppStartMenu; Description: "Create Start Menu shortcuts"; Components: Application; GroupDescription: "GUI Application";
+Name: envPath; Description: "Add to PATH variable"; 
 
 [Run]
 Filename: "sc.exe"; Parameters: "start IRPMonDrv"; Description: "Start IRPMon driver"; Flags: postinstall shellexec unchecked;
@@ -176,11 +199,15 @@ Result := 0;
 hScm := OpenSCManager('', '', SC_MANAGER_CREATE_SERVICE);
 If hScm <> 0 Then
 	begin
-	fileNamePrefix := ExpandConstant('{app}');
-	If IsWin64 Then
-		fileNamePrefix := fileNamePrefix + '\x64\'
-	Else fileNamePrefix := fileNamePrefix + '\x86\';
-	
+  If AType <> SERVICE_KERNEL_DRIVER Then
+    begin
+    fileNamePrefix := ExpandConstant('{app}');
+    If IsWin64 Then
+      fileNamePrefix := fileNamePrefix + '\x64\'
+    Else fileNamePrefix := fileNamePrefix + '\x86\';
+    end
+	Else fileNamePrefix := 'system32\drivers\IRPMon\';
+
 	AFileName := fileNamePrefix + AFileName;			
 	hService := CreateService(hScm, AName, ADisplayName, SERVICE_START, AType, AStart, SERVICE_ERROR_NORMAL, AFileName, '', '', '', '', '');
 				
@@ -260,7 +287,7 @@ Case CurPageID Of
 			serviceFileName := 'irpmndrv.sys';
 			serviceStartType := SERVICE_DEMAND_START;
 			If DriverAuto Then
-				serviceStartType := SERVICE_AUTO_START;
+				serviceStartType := SERVICE_SYSTEM_START;
 
 			err := InstallService(DriverServiceName, DriverServiceDisplayName, SERVICE_KERNEL_DRIVER, serviceStartType, serviceFileName);
 			If err <> 0 Then
@@ -304,8 +331,35 @@ If (Not Succeeded) And (servicesInstalled) Then
 end;
 
 Procedure CurStepChanged(CurStep: TSetupStep);
+Var
+  p : String;
 begin
+If (CurStep = ssPostInstall) And (IsTaskSelected('envPath')) Then
+  begin
+  p := ExpandConstant('{app}');
+  If IsWin64 Then
+    p := p + '\x64'
+   Else p := p + '\x86';
+
+  EnvAddPath(p);
+  end;
+
 Succeeded := (CurStep = ssDone);
+end;
+
+Procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
+Var
+  p : String;
+begin
+If CurUninstallStep = usPostUninstall Then
+  begin
+  p := ExpandConstant('{app}');
+  If IsWin64 Then
+    p := p + '\x64'
+   Else p := p + '\x86';
+
+  EnvRemovePath(p);
+  end;
 end;
 
 Procedure InitializeUninstallProgressForm();

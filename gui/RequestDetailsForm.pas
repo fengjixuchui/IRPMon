@@ -10,8 +10,8 @@ Uses
   Windows, Messages, SysUtils, Variants,
   Classes, Graphics,
   Controls, Forms, Dialogs, ExtCtrls, StdCtrls,
-  RequestListModel, ComCtrls,
-  Generics.Collections, DataParsers,
+  IRPMonRequest, ComCtrls,
+  Generics.Collections, DataParsers, SymTables,
   Menus;
 
 Type
@@ -25,6 +25,8 @@ Type
     CopyValueMenuItem: TMenuItem;
     CopyLineMenuItem: TMenuItem;
     CopyAllMenuItem: TMenuItem;
+    StackTabSheet: TTabSheet;
+    StackListView: TListView;
     Procedure OkButtonClick(Sender: TObject);
     procedure FormCreate(Sender: TObject);
     procedure CopyClick(Sender: TObject);
@@ -32,16 +34,22 @@ Type
   Private
     FRequest : TDriverRequest;
     FParsers : TObjectList<TDataParser>;
+    FSymStore : TModuleSymbolStore;
     Procedure ProcessParsers;
+    Procedure ProcessStack;
   Public
-    Constructor Create(AOwner:TComponent; ARequest:TDriverRequest; AParsers:TObjectList<TDataParser>); Reintroduce;
+    Constructor Create(AOwner:TComponent; ARequest:TDriverRequest; AParsers:TObjectList<TDataParser>; ASymStore:TModuleSymbolStore); Reintroduce;
   end;
 
 
 Implementation
 
 Uses
-  Clipbrd, Utils;
+  Clipbrd,
+  Utils,
+  IRPMonDll,
+  RefObject,
+  ProcessList;
 
 Procedure TRequestDetailsFrm.CopyClick(Sender: TObject);
 Var
@@ -64,10 +72,11 @@ If t <> '' Then
   Clipboard.AsText := t;
 end;
 
-Constructor TRequestDetailsFrm.Create(AOwner:TComponent; ARequest:TDriverRequest; AParsers:TObjectList<TDataParser>);
+Constructor TRequestDetailsFrm.Create(AOwner:TComponent; ARequest:TDriverRequest; AParsers:TObjectList<TDataParser>; ASymStore:TModuleSymbolStore);
 begin
 FRequest := ARequest;
 FParsers := AParsers;
+FSymStore := ASymStore;
 Inherited Create(AOwner);
 end;
 
@@ -92,7 +101,7 @@ names := TStringList.Create;
 values := TStringList.Create;
 For pd In FParsers Do
   begin
-  err := pd.Parse(FRequest, _handled, names, values);
+  err := pd.Parse(rlfText, FRequest, _handled, names, values);
   If (err = ERROR_SUCCESS) And (_handled) Then
     begin
     tb := TTabSheet.Create(PageControl1);
@@ -126,6 +135,37 @@ values.Free;
 names.Free;
 end;
 
+Procedure TRequestDetailsFrm.ProcessStack;
+Var
+  I : Integer;
+  pe : TProcessEntry;
+  pframe : PPointer;
+  offset : NativeUInt;
+  moduleName : WideString;
+  functionName : WideString;
+begin
+pe := FRequest.Process;
+pframe := FRequest.StackFrames;
+For I := 0 To FRequest.StackFrameCount - 1 Do
+  begin
+  With StackListView.Items.Add Do
+    begin
+    Caption := Format('%d', [I]);
+    SubItems.Add(Format('0x%p', [pframe^]));
+    If FSymStore.TranslateAddress(pe, pframe^, moduleName, functionName, offset) Then
+      begin
+      SubItems.Add(moduleName);
+      SubItems.Add(functionName);
+      SubItems.Add(Format('0x%x', [offset]));
+      end;
+    end;
+
+  Inc(pframe);
+  end;
+
+pe.Free;
+end;
+
 Procedure TRequestDetailsFrm.FormCreate(Sender: TObject);
 Var
   value : WideString;
@@ -148,6 +188,9 @@ With NameValueListVIew.Items.Add Do
   Caption := 'Data size';
   SubItems.Add(Format('%d', [FRequest.DataSize]));
   end;
+
+If FRequest.StackFrameCount > 0 Then
+  ProcessStack;
 
 If FRequest.DataSize > 0 Then
   ProcessParsers;

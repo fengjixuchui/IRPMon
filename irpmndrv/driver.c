@@ -4,20 +4,20 @@
 #include "allocator.h"
 #include "utils.h"
 #include "hook.h"
-#include "hook-handlers.h"
 #include "kernel-shared.h"
 #include "ioctls.h"
 #include "modules.h"
 #include "req-queue.h"
 #include "um-services.h"
 #include "pnp-driver-watch.h"
-#include "process-events.h"
+#include "pnp-class-watch.h"
+#include "fs-watch.h"
 #include "req-queue.h"
-#include "regman.h"
-#include "data-loggers.h"
-#include "driver-settings.h"
-#include "devext-hooks.h"
 #include "image-load.h"
+#include "boot-log.h"
+#include "hook-handlers.h"
+#include "devext-hooks.h"
+#include "kbase.h"
 #include "driver.h"
 
 
@@ -186,7 +186,7 @@ static NTSTATUS _HandleCDORequest(ULONG ControlCode, PVOID InputBuffer, ULONG In
 			status = UMClassWatchUnregister((PIOCTL_IRPMNDRV_CLASS_WATCH_UNREGISTER_INPUT)InputBuffer, InputBufferLength);
 			break;
 		case IOCTL_IRPMNDRV_CLASS_WATCH_ENUM:
-			status = PDWClassEnumerate((PIOCTL_IRPMNDRV_CLASS_WATCH_OUTPUT)OutputBuffer, OutputBufferLength, &IoStatus->Information, ExGetPreviousMode());
+			status = CWEnumerate((PIOCTL_IRPMNDRV_CLASS_WATCH_OUTPUT)OutputBuffer, OutputBufferLength, &IoStatus->Information, ExGetPreviousMode());
 			break;
 
 		case IOCTL_IRPMNDRV_DRIVER_WATCH_REGISTER:
@@ -290,7 +290,7 @@ NTSTATUS DriverShutdown(PDEVICE_OBJECT DeviceObject, PIRP Irp)
 	if (DeviceObject == _controlDeviceObject) {
 		DEBUG_ENTER_FUNCTION("DeviceObject=0x%p; Irp=0x%p", DeviceObject, Irp);
 
-		PDWClassWatchesUnregister();
+		CWClear();
 		status = STATUS_SUCCESS;
 		Irp->IoStatus.Status = status;
 		Irp->IoStatus.Information = 0;
@@ -416,16 +416,11 @@ VOID DriverFinit(PDRIVER_OBJECT DriverObject, PUNICODE_STRING RegistryPath, PVOI
 /************************************************************************/
 
 static DRIVER_MODULE_ENTRY_PARAMETERS _moduleEntries[] = {
-	{DriverSettingsInit, DriverSettingsFinit, NULL},
-	{RequestQueueModuleInit, RequestQueueModuleFinit, NULL},
-	{HookModuleInit, HookModuleFinit, NULL},
-	{HookHandlerModuleInit, HookHandlerModuleFinit, NULL},
-	{DevExtHooksModuleInit, DevExtHooksModuleFinit, NULL},
-	{UMServicesModuleInit, UMServicesModuleFinit, NULL},
-	{ProcessEventsModuleInit, ProcessEventsModuleFinit, NULL},
+	{KBaseInit, KBaseFinit, NULL},
+	{CWModuleInit, CWModuleFinit, NULL},
+	{FSWModuleInit, FSWModuleFinit, NULL},
 	{ImageLoadModuleInit, ImageLoadModuleFinit, NULL},
-	{PWDModuleInit, PWDModuleFinit, NULL},
-	{DataLoggerModuleInit, DataLoggerModuleFinit, NULL},
+	{UMServicesModuleInit, UMServicesModuleFinit, NULL},
 	{DriverInit, DriverFinit, NULL},
 };
 
@@ -434,13 +429,11 @@ NTSTATUS DriverEntry(PDRIVER_OBJECT DriverObject, PUNICODE_STRING RegistryPath)
 	NTSTATUS status = STATUS_UNSUCCESSFUL;
 	DEBUG_ENTER_FUNCTION("DriverObject=0x%p; RegistryPath=\"%wZ\"", DriverObject, RegistryPath);
 
-	_moduleEntries[3].Context = RegistryPath;
+	ProxySetDriverObject(DriverObject);
 	status= ModuleFrameworkInit(DriverObject);
 	if (NT_SUCCESS(status)) {
-		status = ModuleFrameworkAddModules(_moduleEntries, sizeof(_moduleEntries) / sizeof(DRIVER_MODULE_ENTRY_PARAMETERS));
-		if (NT_SUCCESS(status))
-			status = ModuleFrameworkInitializeModules(RegistryPath);
-
+		ModuleFrameworkAddModules(_moduleEntries, sizeof(_moduleEntries) / sizeof(DRIVER_MODULE_ENTRY_PARAMETERS));
+		status = ModuleFrameworkInitializeModules(RegistryPath);
 		if (!NT_SUCCESS(status))
 			ModuleFrameworkFinit();
 	}

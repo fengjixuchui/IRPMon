@@ -2,6 +2,7 @@ LIBRARY kbase
 EXPORTS
 	DllInitialize	PRIVATE
 	DllUnload		PRIVATE
+	UtilsCaptureStackTrace
 	DebugAllocatorAlloc
 	DebugAllocatorFree
 	HandleTableCreate
@@ -52,7 +53,7 @@ EXPORTS
 	_ReleaseDeviceArray
 	_GetObjectName
 	_GetDriversInDirectory
-	_EnumDriverDevices
+	UtilsEnumDriverDevices
 	_GetDeviceAddress
 	GetDriverObjectByName
 	VerifyDeviceByAddress
@@ -81,3 +82,118 @@ EXPORTS
 	ProcessQueryFullImageName
 	ProcessQueryCommandLine
 	FileNameFromFileObject
+	UtilsGetCurrentControlSetNumber
+	FoTableInit
+	FoTableFinit
+	FoTableInsert
+	FoTableDelete
+	FoTableDeleteNoReturn
+	FoTableGet
+	FoContextDereference
+	PsTableInit
+	PsTableFinit
+	PsTableInsert
+	PsTableDelete
+	PsTableDeleteNoReturn
+	PsTableGet
+	PsTableEnum
+	PsContextDereference
+
+	DriverSettingsGet
+	DriverSettingsSet
+
+	RequestGetSize
+	RequestCopy
+	RequestEmulateDriverDetected
+	RequestEmulateDeviceDetected
+	RequestEmulateFileNameAssigned
+	RequestEmulateFileNameDeleted
+	RequestEmulateProcessCreated
+	RequestEmulateProcessExitted
+	RequestEmulateImageLoad
+	_SetRequestFlags
+	RequestMemoryAlloc
+	RequestMemoryFree
+
+	IRPDataLogger
+	IRPDataLoggerSetRequestFlags
+	DataLoggerResultRelease
+
+	RegManKeyRegister
+	RegManKeyUnregister
+	RegManKeyValueAdd
+	RegManKeyValueDelete
+	RegManValueCallbacksRegister
+	RegManValueCallbackUnregiser
+	RegManRawCallbackRegister
+	RegManRawCallbackUnregister
+
+	DriverHookRecordReference
+	DriverHookRecordDereference
+	DriverHookRecordValid
+	DeviceHookRecordReference
+	DeviceHookRecordDereference
+	DeviceHookRecordValid
+	HookDriverObject
+	UnhookDriverObject
+	DriverHookRecordSetInfo
+	DriverHookRecordGetInfo
+	DriverHookRecordEnable
+	DriverHookRecordGet
+	DriverHookRecordAddDevice
+	DriverHookRecordDeleteDevice
+	DriverHookRecordGetDevice
+	DeviceHookRecordSetInfo
+	DeviceHookRecordGetInfo
+	HookObjectsEnumerate
+	RequestHeaderInit
+	RequestHeaderInitNoId
+	RequestXXXDetectedCreate
+	RequestQueueGet
+	RequestQueueInsert
+	ListDriversAndDevicesByEvents
+	RequestQueueClear
+	RequestQueueConnect
+	RequestQueueDisconnect
+	RequestQueueCallbackRegister
+	RequestQueueCallbackUnregister
+	HookHandlerFastIoCheckIfPossible
+	HookHandlerFastIoDetachDevice
+	HookHandlerFastIoDeviceControl
+	HookHandlerFastIoLock
+	HookHandlerFastIoQueryBasicInfo
+	HookHandlerFastIoQueryNetworkOpenInfo
+	HookHandlerFastIoQueryOpenInfo
+	HookHandlerFastIoQueryStandardInfo
+	HookHandlerFastIoRead
+	HookHandlerFastIoUnlockAll
+	HookHandlerFastIoUnlockByKey
+	HookHandlerFastIoUnlockSingle
+	HookHandlerFastIoWrite
+	HookHandlerFastIoMdlRead
+	HookHandlerFastIoMdlWrite
+	HookHandlerFastIoMdlReadComplete
+	HookHandlerFastIoMdlWriteComplete
+	HookHandlerFastIoReadCompressed
+	HookHandlerFastIoWriteCompressed
+	HookHandlerFastIoAcquireForModWrite
+	HookHandlerFastIoReleaseForModWrite
+	HookHandlerFastIoAcquireForCcFlush
+	HookHandlerFastIoReleaseForCcFlush
+	HookHandlerFastIoMdlReadCompleteCompressed
+	HookHandlerFastIoMdlWriteCompleteCompressed
+	HookHandlerIRPDisptach
+	ListProcessesByEvents
+	RecordImageLoad
+	ProxySetDriverObject
+
+	BLEnabled
+	BLDisable
+	PDWCheckDriver
+	PDWCheckDrivers
+	PWDDriverNameRegister
+	PWDDriverNameUnregister
+	PWDDriverNameEnumerate
+
+	KBaseInit
+	KBaseFinit

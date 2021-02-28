@@ -156,7 +156,8 @@
       </EntryPointSymbol>
       <ModuleDefinitionFile>kbase.def</ModuleDefinitionFile>
       <NoEntryPoint>true</NoEntryPoint>
-      <AdditionalDependencies>Ksecdd.lib;%(AdditionalDependencies);$(KernelBufferOverflowLib);$(DDK_LIB_PATH)ntoskrnl.lib;$(DDK_LIB_PATH)hal.lib;$(DDK_LIB_PATH)wmilib.lib</AdditionalDependencies>
+      <AdditionalDependencies>FltMgr.lib;Ksecdd.lib;%(AdditionalDependencies);$(KernelBufferOverflowLib);$(DDK_LIB_PATH)ntoskrnl.lib;$(DDK_LIB_PATH)hal.lib;$(DDK_LIB_PATH)wmilib.lib</AdditionalDependencies>
+      <AdditionalOptions>/INTEGRITYCHECK %(AdditionalOptions)</AdditionalOptions>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
@@ -168,7 +169,8 @@
       <EntryPointSymbol>
       </EntryPointSymbol>
       <NoEntryPoint>true</NoEntryPoint>
-      <AdditionalDependencies>Ksecdd.lib;%(AdditionalDependencies);$(KernelBufferOverflowLib);$(DDK_LIB_PATH)ntoskrnl.lib;$(DDK_LIB_PATH)hal.lib;$(DDK_LIB_PATH)wmilib.lib</AdditionalDependencies>
+      <AdditionalDependencies>FltMgr.lib;Ksecdd.lib;%(AdditionalDependencies);$(KernelBufferOverflowLib);$(DDK_LIB_PATH)ntoskrnl.lib;$(DDK_LIB_PATH)hal.lib;$(DDK_LIB_PATH)wmilib.lib</AdditionalDependencies>
+      <AdditionalOptions>/INTEGRITYCHECK %(AdditionalOptions)</AdditionalOptions>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='XP|Win32'">
@@ -180,7 +182,8 @@
       <EntryPointSymbol>
       </EntryPointSymbol>
       <NoEntryPoint>true</NoEntryPoint>
-      <AdditionalDependencies>Ksecdd.lib;%(AdditionalDependencies);$(KernelBufferOverflowLib);$(DDK_LIB_PATH)ntoskrnl.lib;$(DDK_LIB_PATH)hal.lib;$(DDK_LIB_PATH)wmilib.lib</AdditionalDependencies>
+      <AdditionalDependencies>FltMgr.lib;Ksecdd.lib;%(AdditionalDependencies);$(KernelBufferOverflowLib);$(DDK_LIB_PATH)ntoskrnl.lib;$(DDK_LIB_PATH)hal.lib;$(DDK_LIB_PATH)wmilib.lib</AdditionalDependencies>
+      <AdditionalOptions>/INTEGRITYCHECK %(AdditionalOptions)</AdditionalOptions>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
@@ -192,7 +195,8 @@
       </EntryPointSymbol>
       <ModuleDefinitionFile>kbase.def</ModuleDefinitionFile>
       <NoEntryPoint>true</NoEntryPoint>
-      <AdditionalDependencies>Ksecdd.lib;%(AdditionalDependencies);$(KernelBufferOverflowLib);$(DDK_LIB_PATH)ntoskrnl.lib;$(DDK_LIB_PATH)hal.lib;$(DDK_LIB_PATH)wmilib.lib</AdditionalDependencies>
+      <AdditionalDependencies>FltMgr.lib;Ksecdd.lib;%(AdditionalDependencies);$(KernelBufferOverflowLib);$(DDK_LIB_PATH)ntoskrnl.lib;$(DDK_LIB_PATH)hal.lib;$(DDK_LIB_PATH)wmilib.lib</AdditionalDependencies>
+      <AdditionalOptions>/INTEGRITYCHECK %(AdditionalOptions)</AdditionalOptions>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
@@ -204,7 +208,8 @@
       <EntryPointSymbol>
       </EntryPointSymbol>
       <NoEntryPoint>true</NoEntryPoint>
-      <AdditionalDependencies>Ksecdd.lib;%(AdditionalDependencies);$(KernelBufferOverflowLib);$(DDK_LIB_PATH)ntoskrnl.lib;$(DDK_LIB_PATH)hal.lib;$(DDK_LIB_PATH)wmilib.lib</AdditionalDependencies>
+      <AdditionalDependencies>FltMgr.lib;Ksecdd.lib;%(AdditionalDependencies);$(KernelBufferOverflowLib);$(DDK_LIB_PATH)ntoskrnl.lib;$(DDK_LIB_PATH)hal.lib;$(DDK_LIB_PATH)wmilib.lib</AdditionalDependencies>
+      <AdditionalOptions>/INTEGRITYCHECK %(AdditionalOptions)</AdditionalOptions>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='XP|x64'">
@@ -216,7 +221,8 @@
       <EntryPointSymbol>
       </EntryPointSymbol>
       <NoEntryPoint>true</NoEntryPoint>
-      <AdditionalDependencies>Ksecdd.lib;%(AdditionalDependencies);$(KernelBufferOverflowLib);$(DDK_LIB_PATH)ntoskrnl.lib;$(DDK_LIB_PATH)hal.lib;$(DDK_LIB_PATH)wmilib.lib</AdditionalDependencies>
+      <AdditionalDependencies>FltMgr.lib;Ksecdd.lib;%(AdditionalDependencies);$(KernelBufferOverflowLib);$(DDK_LIB_PATH)ntoskrnl.lib;$(DDK_LIB_PATH)hal.lib;$(DDK_LIB_PATH)wmilib.lib</AdditionalDependencies>
+      <AdditionalOptions>/INTEGRITYCHECK %(AdditionalOptions)</AdditionalOptions>
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
@@ -224,26 +230,62 @@
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="..\km-shared\allocator.c" />
+    <ClCompile Include="..\km-shared\fo-context-table.c" />
     <ClCompile Include="..\km-shared\handle-table.c" />
     <ClCompile Include="..\km-shared\hash_table.c" />
+    <ClCompile Include="..\km-shared\modules.c" />
     <ClCompile Include="..\km-shared\multistring.c" />
+    <ClCompile Include="..\km-shared\process-context-table.c" />
     <ClCompile Include="..\km-shared\string-hash-table.c" />
     <ClCompile Include="..\km-shared\string-ref-table.c" />
     <ClCompile Include="..\km-shared\utils-dym-array.c" />
     <ClCompile Include="..\km-shared\utils.c" />
+    <ClCompile Include="..\shared\request.cpp" />
+    <ClCompile Include="boot-log.c" />
+    <ClCompile Include="data-loggers.c" />
+    <ClCompile Include="devext-hooks.c" />
+    <ClCompile Include="driver-settings.c" />
+    <ClCompile Include="hook-handlers.c" />
+    <ClCompile Include="hook.c" />
     <ClCompile Include="kbase.c" />
+    <ClCompile Include="key-record.c" />
+    <ClCompile Include="pnp-driver-watch.c" />
+    <ClCompile Include="process-events.c" />
+    <ClCompile Include="registry-callback.c" />
+    <ClCompile Include="regman.c" />
+    <ClCompile Include="req-queue.c" />
+    <ClCompile Include="thread-context.c" />
+    <ClCompile Include="value-record.c" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\km-shared\allocator.h" />
+    <ClInclude Include="..\km-shared\boot-log.h" />
+    <ClInclude Include="..\km-shared\data-loggers.h" />
+    <ClInclude Include="..\km-shared\devext-hooks.h" />
+    <ClInclude Include="..\km-shared\driver-settings.h" />
+    <ClInclude Include="..\km-shared\fo-context-table.h" />
     <ClInclude Include="..\km-shared\handle-table.h" />
     <ClInclude Include="..\km-shared\hash_table.h" />
+    <ClInclude Include="..\km-shared\hook-handlers.h" />
+    <ClInclude Include="..\km-shared\hook.h" />
+    <ClInclude Include="..\km-shared\kbase.h" />
+    <ClInclude Include="..\km-shared\modules.h" />
     <ClInclude Include="..\km-shared\multistring.h" />
+    <ClInclude Include="..\km-shared\pnp-driver-watch.h" />
     <ClInclude Include="..\km-shared\preprocessor.h" />
+    <ClInclude Include="..\km-shared\process-context-table.h" />
+    <ClInclude Include="..\km-shared\process-events.h" />
+    <ClInclude Include="..\km-shared\req-queue.h" />
     <ClInclude Include="..\km-shared\string-hash-table.h" />
     <ClInclude Include="..\km-shared\string-ref-table.h" />
+    <ClInclude Include="..\km-shared\thread-context.h" />
     <ClInclude Include="..\km-shared\utils-dym-array-types.h" />
     <ClInclude Include="..\km-shared\utils-dym-array.h" />
     <ClInclude Include="..\km-shared\utils.h" />
+    <ClInclude Include="..\shared\request.h" />
+    <ClInclude Include="key-record.h" />
+    <ClInclude Include="registry-callback.h" />
+    <ClInclude Include="value-record.h" />
     <ClInclude Include="version.h" />
   </ItemGroup>
   <ItemGroup>

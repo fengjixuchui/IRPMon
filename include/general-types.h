@@ -113,7 +113,12 @@ typedef enum _ERequestHeaderFlags {
 	REQUEST_FLAG_PAGED = 0x80,
 	/// The request data was allocated from nonpaged pool.
 	REQUEST_FLAG_NONPAGED = 0x100,
+	/// Last REQUEST_STACKTRACE_SIZE*sizeof(void*)s of the request is its usermode stacktrace.
+	REQUEST_FLAG_STACKTRACE	= 0x200,
 } ERequestHeaderFlags, * PERequestHeaderFlags;
+
+/// Number of frames in the stacktrace.
+#define REQUEST_STACKTRACE_SIZE				32
 
 /// Header, containing information common for all request types.
 typedef struct _REQUEST_HEADER {
@@ -139,6 +144,10 @@ typedef struct _REQUEST_HEADER {
 	USHORT Flags;
 	/// IRQL on the time of request generation.
 	UCHAR Irql;
+	/// the Status member of the IO_STATUS_BLOCK
+	NTSTATUS IOSBStatus;
+	/// The Information member of the IO_STATUS_BLOCK
+	ULONG_PTR IOSBInformation;
 	/// Result of the request servicing. The type of this field
 	/// differs depending the type of the request. 
 	/// 
@@ -175,6 +184,20 @@ typedef struct _REQUEST_HEADER {
 		(aHeader).Result.aResultType##Value = (aResultValue);							\
 	}																		\
 
+ /// <summary>Sets IOSBL of a given request, 
+/// </summary>
+/// <param name="aHeader">
+/// Header of the request.
+/// </param>
+/// <param name="aIOSB">
+/// Address of an IO_STATUS_BLOCK structure to be used as a source.
+/// </param>
+#define RequestIOSBSet(aHeader, aIOSB) do {	\
+	(aHeader)->IOSBStatus = (aIOSB)->Status;	\
+	(aHeader)->IOSBInformation = (aIOSB)->Information;	\
+	} while (0)	\
+
+
 /** Represents an IRP request. */
 typedef struct _REQUEST_IRP {
 	/** The header. */
@@ -202,10 +225,6 @@ typedef struct _REQUEST_IRP {
 	PVOID Arg3;
 	/** The fourth argument of the request. */
 	PVOID Arg4;
-	/** Value of the Irp->IoStatus.Status at time of IRP detection. */
-	NTSTATUS IOSBStatus;
-	/** Value of the Irp->IoStatus.Information at time of IRP detection. */
-	ULONG_PTR IOSBInformation;
 	/** PID of the process originally requesting the operation. */
 	ULONG_PTR RequestorProcessId;
 	/** Number of data bytes associated with the request. */
@@ -216,8 +235,6 @@ typedef struct _REQUEST_IRP {
 typedef struct _REQUEST_IRP_COMPLETION {
 	REQUEST_HEADER Header;
 	PVOID IRPAddress;
-	NTSTATUS CompletionStatus;
-	ULONG_PTR CompletionInformation;
 	ULONG MajorFunction;
 	ULONG MinorFunction;
 	PVOID Arguments[4];
@@ -228,6 +245,38 @@ typedef struct _REQUEST_IRP_COMPLETION {
 	ULONG_PTR DataSize;
 	// Data
 } REQUEST_IRP_COMPLETION, *PREQUEST_IRP_COMPLETION;
+
+#ifndef _KERNEL_MODE
+
+typedef struct _NAMED_PIPE_CREATE_PARAMETERS {
+	ULONG NamedPipeType;
+	ULONG ReadMode;
+	ULONG CompletionMode;
+	ULONG MaximumInstances;
+	ULONG InboundQuota;
+	ULONG OutboundQuota;
+	LARGE_INTEGER DefaultTimeout;
+	BOOLEAN TimeoutSpecified;
+} NAMED_PIPE_CREATE_PARAMETERS, * PNAMED_PIPE_CREATE_PARAMETERS;
+
+typedef struct _MAILSLOT_CREATE_PARAMETERS {
+	ULONG MailslotQuota;
+	ULONG MaximumMessageSize;
+	LARGE_INTEGER ReadTimeout;
+	BOOLEAN TimeoutSpecified;
+} MAILSLOT_CREATE_PARAMETERS, * PMAILSLOT_CREATE_PARAMETERS;
+
+#endif
+
+typedef struct _REQUEST_IRP_CREATE_NAMED_PIPE_DATA {
+	NAMED_PIPE_CREATE_PARAMETERS Parameters;
+	ULONG DesiredAccess;
+} REQUEST_IRP_CREATE_NAMED_PIPE_DATA, *PREQUEST_IRP_CREATE_NAMED_PIPE_DATA;
+
+typedef struct _REQUEST_IRP_CREATE_MAILSLOT_DATA {
+	MAILSLOT_CREATE_PARAMETERS Parameters;
+	ULONG DesiredAccess;
+} REQUEST_IRP_CREATE_MAILSLOT_DATA, *PREQUEST_IRP_CREATE_MAILSLOT_DATA;
 
 /** Represents a fast I/O request. */
 typedef struct _REQUEST_FASTIO {
@@ -252,8 +301,7 @@ typedef struct _REQUEST_FASTIO {
 	PVOID Arg8;
 	PVOID Arg9;
 	PVOID FileObject;
-	LONG IOSBStatus;
-	ULONG_PTR IOSBInformation;
+	ULONG DataSize;
 } REQUEST_FASTIO, *PREQUEST_FASTIO;
 
 /** Represent an AddDevice event indicating that an AddDevice routine of a
@@ -289,12 +337,6 @@ typedef struct _REQUEST_STARTIO {
 	PVOID Arg4;
 	ULONG IrpFlags;
 	PVOID FileObject;
-	/** Value of the Irp->IoStatus.Information after calling the original
-	    dispatch routine. */
-	ULONG_PTR Information;
-	/** Value of the Irp->IoStatus.Status after calling the original
-	    dispatch routine. */
-	LONG Status;
 	/** Length of data associated with the request. */
 	SIZE_T DataSize;
 	// Data
@@ -455,6 +497,8 @@ typedef struct _DRIVER_MONITOR_SETTINGS {
 	BOOLEAN MonitorIRPCompletion;
 	/// Collect additional data for intercepted requests.
 	BOOLEAN MonitorData;
+	/// Collect information about stacktrace for user-mode requests.
+	BOOLEAN MonitorStackTrace;
 	/// IRPSettings for newly hooked devices.
 	UCHAR IRPSettings[0x1b + 1];
 	/// FastIoSettings for newly hooked devices.
@@ -545,8 +589,48 @@ typedef struct _IRPMNDRV_SETTINGS {
 	/// If set to <c>FALSE</c> the limit is not enforced. If set to <c>TRUE</c>,
 	/// data are stripped to match the limit, if necessary.
 	BOOLEAN StripData;
+	/// If set to TRUE, the drive logs requests during
+	/// system startup
+	BOOLEAN LogBoot;
 } IRPMNDRV_SETTINGS, *PIRPMNDRV_SETTINGS;
 
+/**************/
+/* LOG FILES  */
+/**************/
+
+#define LOGHEADER_SIGNATURE			0x474f4c4e4d505249ULL
+#define LOGHEADER_VERSION				1
+#define LOGHEADER_ARCHITECTURE_X86		1
+#define LOGHEADER_ARCHITECTURE_X64		2
+#define LOGHEADER_ARCHITECTURE_ARM		3
+#define LOGHEADER_ARCHITECTURE_ARM64	4
+
+#if defined(_X86_)
+#define LOGHEADER_ARCHITECTURE			(LOGHEADER_ARCHITECTURE_X86)
+#elif defined(_AMD64_)
+#define LOGHEADER_ARCHITECTURE			(LOGHEADER_ARCHITECTURE_X64)
+#elif defined(_ARM_)
+#define LOGHEADER_ARCHITECTURE			(LOGHEADER_ARCHITECTURE_ARM)
+#elif defined(_ARM64_)
+#define LOGHEADER_ARCHITECTURE			(LOGHEADER_ARCHITECTURE_ARM64)
+#else
+#error Unsupported architecture
+#endif
+
+
+typedef struct _BINARY_LOG_HEADER {
+	ULONG64 Signature;
+	ULONG Version;
+	ULONG Architecture;
+} BINARY_LOG_HEADER, *PBINARY_LOG_HEADER;
+
+typedef enum _ERequestLogFormat {
+	rlfUnknown,
+	rlfText,
+	rlfBinary,
+	rlfJSONArray,
+	rlfJSONLines,
+} ERequestLogFormat, *PERequestLogFormat;
 
 
 #endif 

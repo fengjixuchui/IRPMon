@@ -217,44 +217,24 @@
     <FilesToPackage Include="$(TargetPath)" />
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="..\shared\request.cpp" />
-    <ClCompile Include="data-loggers.c" />
-    <ClCompile Include="devext-hooks.c" />
-    <ClCompile Include="driver-settings.c" />
+    <ClCompile Include="..\km-shared\modules.c" />
     <ClCompile Include="driver.c" />
-    <ClCompile Include="fo-context-table.c" />
-    <ClCompile Include="hook-handlers.c" />
-    <ClCompile Include="hook.c" />
+    <ClCompile Include="fs-watch.c" />
     <ClCompile Include="image-load.c" />
-    <ClCompile Include="modules.c" />
-    <ClCompile Include="pnp-driver-watch.c" />
-    <ClCompile Include="process-context-table.c" />
-    <ClCompile Include="process-events.c" />
-    <ClCompile Include="req-queue.c" />
+    <ClCompile Include="pnp-class-watch.c" />
     <ClCompile Include="um-services.c" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\include\general-types.h" />
     <ClInclude Include="..\include\ioctls.h" />
     <ClInclude Include="..\include\kernel-shared.h" />
+    <ClInclude Include="..\km-shared\modules.h" />
     <ClInclude Include="..\km-shared\preprocessor.h" />
-    <ClInclude Include="..\shared\request.h" />
-    <ClInclude Include="data-loggers.h" />
     <ClInclude Include="devext-hooks.h" />
-    <ClInclude Include="driver-settings.h" />
     <ClInclude Include="driver.h" />
-    <ClInclude Include="fo-context-table.h" />
-    <ClInclude Include="hook-handlers.h" />
-    <ClInclude Include="hook.h" />
+    <ClInclude Include="fs-watch.h" />
     <ClInclude Include="image-load.h" />
-    <ClInclude Include="modules.h" />
-    <ClInclude Include="pnp-driver-watch.h" />
-    <ClInclude Include="process-context-table.h" />
-    <ClInclude Include="process-events.h" />
-    <ClInclude Include="req-queue.h" />
-    <ClInclude Include="resource.h" />
-    <ClInclude Include="resource1.h" />
-    <ClInclude Include="resource2.h" />
+    <ClInclude Include="pnp-class-watch.h" />
     <ClInclude Include="um-services.h" />
     <ClInclude Include="version.h" />
   </ItemGroup>
@@ -264,9 +244,6 @@
   <ItemGroup>
     <ProjectReference Include="..\kbase\kbase.vcxproj">
       <Project>{42b0c13c-cf65-4cc5-8be9-15fc87e9604a}</Project>
-    </ProjectReference>
-    <ProjectReference Include="..\libregman\libregman.vcxproj">
-      <Project>{9b737bc7-1eda-4ab8-b1df-9a8f66bbfed7}</Project>
     </ProjectReference>
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

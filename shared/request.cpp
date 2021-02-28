@@ -81,6 +81,7 @@ size_t RequestGetSize(const REQUEST_HEADER *Header)
 	size_t ret = 0;
 	const REQUEST_IRP *irp = NULL;
 	const REQUEST_IRP_COMPLETION *irpComp = NULL;
+	const REQUEST_FASTIO *fastIo = NULL;
 	const REQUEST_STARTIO *startIo = NULL;
 	const REQUEST_DRIVER_DETECTED *drr = CONTAINING_RECORD(Header, REQUEST_DRIVER_DETECTED, Header);
 	const REQUEST_DEVICE_DETECTED *der = CONTAINING_RECORD(Header, REQUEST_DEVICE_DETECTED, Header);
@@ -102,6 +103,8 @@ size_t RequestGetSize(const REQUEST_HEADER *Header)
 			break;
 		case ertFastIo:
 			ret = sizeof(REQUEST_FASTIO);
+			fastIo = CONTAINING_RECORD(Header, REQUEST_FASTIO, Header);
+			ret += fastIo->DataSize;
 			break;
 		case ertAddDevice:
 			ret = sizeof(REQUEST_ADDDEVICE);
@@ -139,6 +142,9 @@ size_t RequestGetSize(const REQUEST_HEADER *Header)
 			ret = sizeof(REQUEST_IMAGE_LOAD) + ilr->DataSize;
 			break;
 	}
+
+	if ((Header->Flags & REQUEST_FLAG_STACKTRACE) != 0)
+		ret += REQUEST_STACKTRACE_SIZE *sizeof(void *);
 
 	return ret;
 }
@@ -282,6 +288,32 @@ ERROR_TYPE RequestEmulateProcessExitted(HANDLE ProcessId, PREQUEST_PROCESS_EXITT
 		_RequestHeaderInit(&tmpRequest->Header, NULL, NULL, ertProcessExitted);
 		tmpRequest->Header.ProcessId = ProcessId;
 		tmpRequest->ProcessId = ProcessId;
+		*Request = tmpRequest;
+		ret = ERROR_VALUE_SUCCESS;
+	} else ret = ERROR_VALUE_NOMEM;
+
+	return ret;
+}
+
+
+ERROR_TYPE RequestEmulateImageLoad(HANDLE ProcessId, void *BaseAddress, size_t ImageSize, const wchar_t *ImageName, PREQUEST_IMAGE_LOAD *Request)
+{
+	size_t nameLen = 0;
+	ERROR_TYPE ret = ERROR_VALUE_INVAL;
+	PREQUEST_IMAGE_LOAD tmpRequest = NULL;
+
+	if (ImageName != NULL)
+		nameLen = wcslen(ImageName)*sizeof(wchar_t);
+
+	tmpRequest = (PREQUEST_IMAGE_LOAD)RequestMemoryAlloc(sizeof(REQUEST_IMAGE_LOAD) + nameLen);
+	if (tmpRequest != NULL) {
+		_RequestHeaderInit(&tmpRequest->Header, NULL, NULL, ertImageLoad);
+		tmpRequest->Header.ProcessId = ProcessId;
+		tmpRequest->ImageBase = BaseAddress;
+		tmpRequest->ImageSize = ImageSize;
+		tmpRequest->KernelDriver = (ProcessId == NULL);
+		tmpRequest->DataSize = (ULONG)nameLen;
+		memcpy(tmpRequest + 1, ImageName, tmpRequest->DataSize);
 		*Request = tmpRequest;
 		ret = ERROR_VALUE_SUCCESS;
 	} else ret = ERROR_VALUE_NOMEM;

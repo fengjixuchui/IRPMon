@@ -11,8 +11,10 @@
 #include "request.h"
 #include "req-queue.h"
 #include "pnp-driver-watch.h"
+#include "pnp-class-watch.h"
 #include "process-events.h"
 #include "driver-settings.h"
+#include "boot-log.h"
 #include "um-services.h"
 
 
@@ -487,7 +489,7 @@ NTSTATUS UMEnumDriversDevices(PVOID OutputBuffer, ULONG OutputBufferLength, PULO
 				tmp = driverInfoArray;
 				for (i = 0; i < driversCount; ++i) {
 					tmp->DriverObject = (i < driverDirCount) ? driverDir[i] : fsDir[i - driverDirCount];
-					status = _EnumDriverDevices(tmp->DriverObject, &tmp->Devices, &tmp->DeviceCount);
+					status = UtilsEnumDriverDevices(tmp->DriverObject, &tmp->Devices, &tmp->DeviceCount);
 					if (NT_SUCCESS(status)) {
 						status = _GetObjectName(tmp->DriverObject, &tmp->DriverName);
 						if (NT_SUCCESS(status)) {
@@ -671,6 +673,8 @@ NTSTATUS UMRequestQueueConnect(void)
 	DEBUG_ENTER_FUNCTION_NO_ARGS();
 
 	status = RequestQueueConnect();
+	if (NT_SUCCESS(status))
+		BLDisable();
 
 	DEBUG_EXIT_FUNCTION("0x%x", status);
 	return status;
@@ -1115,7 +1119,7 @@ NTSTATUS UMClassWatchRegister(PIOCTL_IRPMNDRV_CLASS_WATCH_REGISTER_INPUT InputBu
 			} else classGuid = input.Data.ClassGuidBinary;
 
 			if (NT_SUCCESS(status))
-				status = PDWClassRegister(&classGuid, (input.Flags & CLASS_WATCH_FLAG_UPPERFILTER), (input.Flags & CLASS_WATCH_FLAG_BEGINNING));
+				status = CWRegister(&classGuid, (input.Flags & CLASS_WATCH_FLAG_UPPERFILTER), (input.Flags & CLASS_WATCH_FLAG_BEGINNING));
 		}
 	} else status = STATUS_BUFFER_TOO_SMALL;
 
@@ -1152,7 +1156,7 @@ NTSTATUS UMClassWatchUnregister(PIOCTL_IRPMNDRV_CLASS_WATCH_UNREGISTER_INPUT Inp
 			} else classGuid = input.Data.ClassGuidBinary;
 
 			if (NT_SUCCESS(status))
-				status = PDWClassUnregister(&classGuid, (input.Flags & CLASS_WATCH_FLAG_UPPERFILTER), (input.Flags & CLASS_WATCH_FLAG_BEGINNING));
+				status = CWUnregister(&classGuid, (input.Flags & CLASS_WATCH_FLAG_UPPERFILTER), (input.Flags & CLASS_WATCH_FLAG_BEGINNING));
 		}
 	} else status = STATUS_BUFFER_TOO_SMALL;
 

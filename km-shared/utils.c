@@ -1,10 +1,12 @@
 
 #include <ntifs.h>
+#include <fltKernel.h>
 #include <ntddvol.h>
 #include "preprocessor.h"
 #include "allocator.h"
 #include "kernel-shared.h"
 #include "utils-dym-array.h"
+#include "thread-context.h"
 #include "utils.h"
 
 #undef DEBUG_TRACE_ENABLED
@@ -47,11 +49,14 @@ typedef struct _OBJECT_DIRECTORY_INFORMATION {
    UNICODE_STRING TypeName;
 } OBJECT_DIRECTORY_INFORMATION, *POBJECT_DIRECTORY_INFORMATION;
 
+typedef POBJECT_TYPE (OBGETOBJECTTYPE)(PVOID Object);
+
 __declspec(dllimport) ZWQUERYDIRECTORYOBJECT ZwQueryDirectoryObject;
 __declspec(dllimport) OBREFERENCEOBJECTBYNAME ObReferenceObjectByName;
 __declspec(dllimport) ZWQUERYSYSTEMINFORMATION ZwQuerySystemInformation;
 __declspec(dllimport) ZWQUERYINFORMATIONPROCESS ZwQueryInformationProcess;
-__declspec(dllimport) POBJECT_TYPE *IoDriverObjectType;
+
+static POBJECT_TYPE *_IoDriverObjectType = NULL;
 
 
 /************************************************************************/
@@ -111,7 +116,7 @@ NTSTATUS _GetObjectName(PVOID Object, PUNICODE_STRING Name)
 	status = ObQueryNameString(Object, NULL, 0, &oniLen);
 	if (status == STATUS_INFO_LENGTH_MISMATCH) {
 		oniLen += sizeof(OBJECT_NAME_INFORMATION) + sizeof(WCHAR);
-		oni = (POBJECT_NAME_INFORMATION)HeapMemoryAllocNonPaged(oniLen);
+		oni = HeapMemoryAllocNonPaged(oniLen);
 		if (oni != NULL) {
 			status = ObQueryNameString(Object, oni, oniLen, &oniLen);
 			if (NT_SUCCESS(status)) {
@@ -129,7 +134,7 @@ NTSTATUS _GetObjectName(PVOID Object, PUNICODE_STRING Name)
 	} else if (NT_SUCCESS(status)) {
 		Name->Length = 0;
 		Name->MaximumLength = sizeof(WCHAR);
-		Name->Buffer = (PWCH)HeapMemoryAllocNonPaged(sizeof(WCHAR));
+		Name->Buffer = HeapMemoryAllocNonPaged(sizeof(WCHAR));
 		if (Name->Buffer != NULL) {
 			Name->Buffer[0] = L'\0';
 			status = STATUS_SUCCESS;
@@ -162,6 +167,17 @@ static NTSTATUS _AppendDriverNameToDirectory(PUNICODE_STRING Dest, PUNICODE_STRI
 }
 
 
+typedef struct _OBJECT_DIRECTORY_ENTRY {
+	struct _OBJECT_DIRECTORY_ENTRY *Next;
+	PVOID Object;
+	ULONG Hash;
+} OBJECT_DIRECTORY_ENTRY, *POBJECT_DIRECTORY_ENTRY;
+
+typedef struct _OBJECT_DIRECTORY {
+	POBJECT_DIRECTORY_ENTRY Buckets[37];
+	EX_PUSH_LOCK Lock;
+} OBJECT_DIRECTORY, *POBJECT_DIRECTORY;
+
 NTSTATUS _GetDriversInDirectory(PUNICODE_STRING Directory, PDRIVER_OBJECT **DriverArray, PSIZE_T DriverCount)
 {
 	SIZE_T tmpDriverCount = 0;
@@ -178,7 +194,7 @@ NTSTATUS _GetDriversInDirectory(PUNICODE_STRING Directory, PDRIVER_OBJECT **Driv
 	status = DymArrayCreate(PagedPool, &driverArray);
 	if (NT_SUCCESS(status)) {
 		RtlInitUnicodeString(&uDriverTypeString, L"Driver");
-		InitializeObjectAttributes(&oa, Directory, OBJ_CASE_INSENSITIVE, NULL, NULL);
+		InitializeObjectAttributes(&oa, Directory, OBJ_KERNEL_HANDLE | OBJ_CASE_INSENSITIVE, NULL, NULL);
 		status = ZwOpenDirectoryObject(&hDirectory, DIRECTORY_QUERY, &oa);
 		if (NT_SUCCESS(status)) {
 			ULONG QueryContext = 0;
@@ -196,7 +212,7 @@ NTSTATUS _GetDriversInDirectory(PUNICODE_STRING Directory, PDRIVER_OBJECT **Driv
 						if (NT_SUCCESS(status)) {
 							PDRIVER_OBJECT DriverPtr = NULL;
 
-							status = ObReferenceObjectByName(&FullDriverName, OBJ_CASE_INSENSITIVE, NULL, GENERIC_READ, *IoDriverObjectType, KernelMode, NULL, (PVOID *)&DriverPtr);
+							status = ObReferenceObjectByName(&FullDriverName, OBJ_CASE_INSENSITIVE, NULL, GENERIC_READ, *_IoDriverObjectType, KernelMode, NULL, (PVOID *)&DriverPtr);
 							if (NT_SUCCESS(status)) {
 								status = DymArrayPushBack(driverArray, DriverPtr);
 								if (!NT_SUCCESS(status))
@@ -238,7 +254,7 @@ NTSTATUS _GetDriversInDirectory(PUNICODE_STRING Directory, PDRIVER_OBJECT **Driv
 }
 
 
-NTSTATUS _EnumDriverDevices(PDRIVER_OBJECT DriverObject, PDEVICE_OBJECT **DeviceArray, PULONG DeviceArrayLength)
+NTSTATUS UtilsEnumDriverDevices(PDRIVER_OBJECT DriverObject, PDEVICE_OBJECT **DeviceArray, PULONG DeviceArrayLength)
 {
 	ULONG TmpArrayLength = 0;
 	PDEVICE_OBJECT *TmpDeviceArray = NULL;
@@ -312,7 +328,7 @@ NTSTATUS _GetDeviceAddressByCondition(DEVICE_CONDITION_CALLBACK *Callback, BOOLE
                PDEVICE_OBJECT *DeviceArray = NULL;
                ULONG DeviceArrayLength = 0;
 
-               Status = _EnumDriverDevices(TotalArray[i], &DeviceArray, &DeviceArrayLength);
+               Status = UtilsEnumDriverDevices(TotalArray[i], &DeviceArray, &DeviceArrayLength);
                if (NT_SUCCESS(Status)) {
                   ULONG j = 0;
 
@@ -428,7 +444,7 @@ NTSTATUS GetDriverObjectByName(PUNICODE_STRING Name, PDRIVER_OBJECT *DriverObjec
 	NTSTATUS status = STATUS_UNSUCCESSFUL;
 	DEBUG_ENTER_FUNCTION("Name=0x%p; DriverObject=0x%p", Name, DriverObject);
 
-	status = ObReferenceObjectByName(Name, 0, NULL, 0, *IoDriverObjectType, KernelMode, NULL, &tmpDriverObject);
+	status = ObReferenceObjectByName(Name, 0, NULL, 0, *_IoDriverObjectType, KernelMode, NULL, &tmpDriverObject);
 	if (NT_SUCCESS(status))
 		*DriverObject = tmpDriverObject;
 
@@ -693,4 +709,92 @@ NTSTATUS FileNameFromFileObject(PFILE_OBJECT FileObject, PUNICODE_STRING Name)
 
 	DEBUG_EXIT_FUNCTION("0x%x, Name=\"%wZ\"", status, Name);
 	return status;
+}
+
+
+NTSTATUS UtilsGetCurrentControlSetNumber(PULONG Number)
+{
+	HANDLE hSelectKey = NULL;
+	UNICODE_STRING uSelectKey;
+	OBJECT_ATTRIBUTES oa;
+	NTSTATUS status = STATUS_UNSUCCESSFUL;
+	DEBUG_ENTER_FUNCTION("Number=0x%p", Number);
+
+	RtlInitUnicodeString(&uSelectKey, L"\\Registry\\Machine\\SYSTEM\\Select");
+	InitializeObjectAttributes(&oa, &uSelectKey, OBJ_CASE_INSENSITIVE | OBJ_KERNEL_HANDLE, NULL, NULL);
+	status = ZwOpenKey(&hSelectKey, KEY_QUERY_VALUE, &oa);
+	if (NT_SUCCESS(status)) {
+		ULONG retLength = 0;
+		UNICODE_STRING uValueName;
+		UCHAR kvpiStorage[sizeof(KEY_VALUE_PARTIAL_INFORMATION) + sizeof(ULONG)];
+		PKEY_VALUE_PARTIAL_INFORMATION kvpi = (PKEY_VALUE_PARTIAL_INFORMATION)kvpiStorage;
+
+		RtlInitUnicodeString(&uValueName, L"Current");
+		status = ZwQueryValueKey(hSelectKey, &uValueName, KeyValuePartialInformation, kvpi, sizeof(kvpiStorage), &retLength);
+		if (NT_SUCCESS(status)) {
+			if (kvpi->DataLength == sizeof(ULONG))
+				*Number = *(PULONG)kvpi->Data;
+			else status = STATUS_INVALID_PARAMETER;
+		}
+
+		ZwClose(hSelectKey);
+	}
+
+	DEBUG_EXIT_FUNCTION("0x%x, *Number=%u", status, *Number);
+	return status;
+}
+
+
+size_t UtilsCaptureStackTrace(size_t FrameCount, void **Frames)
+{
+	size_t ret = 0;
+	PTHREAD_CONTEXT_RECORD threadContext = NULL;
+	LONG count = 0;
+
+	RtlSecureZeroMemory(Frames, FrameCount * sizeof(void*));
+	if (KeGetCurrentIrql() == PASSIVE_LEVEL &&
+		ExGetPreviousMode() == UserMode) {
+		threadContext = ThreadContextGet();
+		if (threadContext != NULL) {
+			count = InterlockedIncrement(&threadContext->StackTraceInProgress);
+			if (count == 1) {
+				ret = RtlWalkFrameChain(Frames, (ULONG)FrameCount, 1);
+				if (ret != 0)
+					ret = FrameCount;
+			}
+
+			InterlockedDecrement(&threadContext->StackTraceInProgress);
+			ThreadContextDereference(threadContext);
+		}
+	}
+
+	return ret;
+}
+
+
+NTSTATUS UtilsModuleInit(PDRIVER_OBJECT DriverObject, PUNICODE_STRING RegistryPath, PVOID Context)
+{
+	UNICODE_STRING uRoutineName;
+	NTSTATUS status = STATUS_UNSUCCESSFUL;
+	DEBUG_ENTER_FUNCTION("DriverObject=0x%p; RegistryPath=\"%wZ\"; Context=0x%p", DriverObject, RegistryPath, Context);
+
+	status = STATUS_SUCCESS;
+	RtlInitUnicodeString(&uRoutineName, L"IoDriverObjectType");
+	_IoDriverObjectType = (POBJECT_TYPE*)MmGetSystemRoutineAddress(&uRoutineName);
+	if (_IoDriverObjectType == NULL)
+		status = STATUS_NOT_FOUND;
+
+	DEBUG_EXIT_FUNCTION("0x%x", status);
+	return status;
+}
+
+
+void UtilsModuleFinit(PDRIVER_OBJECT DriverObject, PUNICODE_STRING RegistryPath, PVOID Context)
+{
+	DEBUG_ENTER_FUNCTION("DriverObject=0x%p; RegistryPath=\"%wZ\"; Context=0x%p", DriverObject, RegistryPath, Context);
+
+	_IoDriverObjectType = NULL;
+
+	DEBUG_EXIT_FUNCTION_VOID();
+	return;
 }

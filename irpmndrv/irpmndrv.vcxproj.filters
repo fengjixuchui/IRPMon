@@ -18,66 +18,24 @@
     <ClCompile Include="driver.c">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="hook.c">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="hook-handlers.c">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="modules.c">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="pnp-driver-watch.c">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="req-queue.c">
-      <Filter>Source Files</Filter>
-    </ClCompile>
     <ClCompile Include="um-services.c">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="data-loggers.c">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="process-events.c">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="fo-context-table.c">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="process-context-table.c">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="driver-settings.c">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="devext-hooks.c">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="image-load.c">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="..\shared\request.cpp">
+    <ClCompile Include="pnp-class-watch.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="fs-watch.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\km-shared\modules.c">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="driver.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="hook.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="hook-handlers.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="modules.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="pnp-driver-watch.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="req-queue.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="um-services.h">
@@ -95,33 +53,6 @@
     <ClInclude Include="..\km-shared\preprocessor.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="data-loggers.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="..\shared\request.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="process-events.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="fo-context-table.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="process-context-table.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="driver-settings.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="resource.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="resource1.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="resource2.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="version.h">
       <Filter>Header Files</Filter>
     </ClInclude>
@@ -129,6 +60,15 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="image-load.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="pnp-class-watch.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="fs-watch.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\km-shared\modules.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

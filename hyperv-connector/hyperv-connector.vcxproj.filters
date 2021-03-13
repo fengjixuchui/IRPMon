@@ -13,43 +13,27 @@
       <UniqueIdentifier>{67DA6AB6-F800-4c08-8B7A-83BB121AAD01}</UniqueIdentifier>
       <Extensions>rc;ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe;resx;tiff;tif;png;wav;mfcribbon-ms</Extensions>
     </Filter>
+    <Filter Include="DEF File">
+      <UniqueIdentifier>{f28c68c1-c9f7-4ada-b0ad-964b097a2740}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="irpmonc.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="driver-settings.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="stop-event.c">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="guid-api.c">
+    <ClCompile Include="hyperv-connector.c">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="driver-hook.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="irpmonc.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="driver-settings.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="version.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="request-output.h">
+    <ClInclude Include="..\include\hyperv-connector.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="stop-event.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="guid-api.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="hyperv-connector.def">
+      <Filter>DEF File</Filter>
+    </None>
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="..\resources\version.rc">

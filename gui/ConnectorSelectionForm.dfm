@@ -3,7 +3,7 @@ object ConnectorSelectionFrm: TConnectorSelectionFrm
   Top = 0
   BorderIcons = [biSystemMenu]
   Caption = 'Connect to the driver'
-  ClientHeight = 219
+  ClientHeight = 291
   ClientWidth = 320
   Color = clBtnFace
   Font.Charset = DEFAULT_CHARSET
@@ -20,16 +20,12 @@ object ConnectorSelectionFrm: TConnectorSelectionFrm
     Left = 0
     Top = 0
     Width = 320
-    Height = 185
+    Height = 255
     ActivePage = DeviceTabSheet
     Align = alTop
     TabOrder = 0
     object NoneTabSheet: TTabSheet
       Caption = 'None'
-      ExplicitLeft = 0
-      ExplicitTop = 0
-      ExplicitWidth = 0
-      ExplicitHeight = 0
     end
     object DeviceTabSheet: TTabSheet
       Caption = 'Device'
@@ -54,31 +50,45 @@ object ConnectorSelectionFrm: TConnectorSelectionFrm
       ImageIndex = 2
       object DomainLabel: TLabel
         Left = 3
-        Top = 0
+        Top = 8
         Width = 49
         Height = 13
         Caption = 'Domain/IP'
       end
       object PortLabel: TLabel
         Left = 3
-        Top = 38
+        Top = 35
         Width = 20
         Height = 13
         Caption = 'Port'
       end
       object VSockVersionLabel: TLabel
         Left = 0
-        Top = 88
+        Top = 85
         Width = 66
         Height = 13
         Caption = 'vSock version'
       end
       object VSockAddressLabel: TLabel
-        Left = 5
-        Top = 115
+        Left = -4
+        Top = 112
         Width = 69
         Height = 13
         Caption = 'vSock address'
+      end
+      object HyperVVMLabel: TLabel
+        Left = 3
+        Top = 139
+        Width = 56
+        Height = 13
+        Caption = 'Hyper-V VM'
+      end
+      object HyperVAppLabel: TLabel
+        Left = 3
+        Top = 166
+        Width = 61
+        Height = 13
+        Caption = 'Hyper-V App'
       end
       object NetworkDomainEdit: TEdit
         Left = 80
@@ -94,22 +104,13 @@ object ConnectorSelectionFrm: TConnectorSelectionFrm
         Height = 21
         TabOrder = 1
       end
-      object VSocketCheckBox: TCheckBox
-        Left = 80
-        Top = 62
-        Width = 129
-        Height = 17
-        Caption = 'Use VMWare sockets'
-        TabOrder = 2
-        OnClick = VSocketCheckBoxClick
-      end
       object VSockVersionEdit: TEdit
         Left = 80
         Top = 85
         Width = 129
         Height = 21
         ReadOnly = True
-        TabOrder = 3
+        TabOrder = 2
       end
       object VSockAddressEdit: TEdit
         Left = 80
@@ -117,13 +118,48 @@ object ConnectorSelectionFrm: TConnectorSelectionFrm
         Width = 129
         Height = 21
         ReadOnly = True
+        TabOrder = 3
+      end
+      object NetworkTypeComboBox: TComboBox
+        Left = 80
+        Top = 58
+        Width = 129
+        Height = 21
+        Style = csDropDownList
+        ItemIndex = 0
         TabOrder = 4
+        Text = 'Classic (Ethernet)'
+        OnClick = NetworkTypeComboBoxClick
+        Items.Strings = (
+          'Classic (Ethernet)'
+          'VMWare vSockets'
+          'Microsoft Hyper-V')
+      end
+      object HyperVVMIdEdit: TEdit
+        Left = 80
+        Top = 139
+        Width = 129
+        Height = 21
+        Enabled = False
+        ReadOnly = True
+        TabOrder = 5
+        Text = '<not implemented>'
+      end
+      object HyperVAppIdEdit: TEdit
+        Left = 80
+        Top = 166
+        Width = 129
+        Height = 21
+        Enabled = False
+        ReadOnly = True
+        TabOrder = 6
+        Text = '<not implemented>'
       end
     end
   end
   object OkButton: TButton
     Left = 200
-    Top = 187
+    Top = 261
     Width = 57
     Height = 30
     Caption = 'Ok'
@@ -132,7 +168,7 @@ object ConnectorSelectionFrm: TConnectorSelectionFrm
   end
   object StornoButton: TButton
     Left = 263
-    Top = 187
+    Top = 261
     Width = 57
     Height = 30
     Caption = 'Storno'

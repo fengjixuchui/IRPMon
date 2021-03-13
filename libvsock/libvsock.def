@@ -1,0 +1,10 @@
+LIBRARY libvsock
+EXPORTS
+	LibVSockGetAddressFamily
+	LibVSockGetVersion
+	LibVSockGetLocalId
+	LibVSockAddressAlloc
+	LibVSockAddressFree
+	LibVSockAddressPrintA
+	LibVSockAddressPrintW
+	LibVSockHyperVAddressAlloc
